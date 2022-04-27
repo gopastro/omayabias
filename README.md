@@ -24,3 +24,10 @@ Unzip the zip file, and from within the virtual environment do:
 
 	python setup.py install
 	
+## Development
+
+After making changes in the omayabias source code, to install within
+the virtual environment:
+
+	python setup.py develop
+	
