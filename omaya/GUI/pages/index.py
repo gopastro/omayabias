@@ -7,7 +7,7 @@ layout = html.Div([
             [
                 html.H1("OMAyA", className="display-3"),
                 html.P(
-                    "Welcome to the landing page for the OMAyA GUI",
+                    "Welcome to the OMAyA GUI Dashboard",
                     className="lead",
                 ),
                 html.Hr(className="my-2"),
@@ -15,7 +15,7 @@ layout = html.Div([
                     "Use the following buttons to reach the specific page you need"
                 ),
                 html.P(
-                    [dbc.Button("IV Core", href="/iv-core", color="info", className="me-md-2"),
+                    [dbc.Button("IV Curve", href="/iv-curve", color="info", className="me-md-2"),
                     dbc.Button("Power Test", href="/power-test", color="info", className="me-md-2"),
                     dbc.Button("Plot", href="/plot", color="info", className="me-md-2"),
                     dbc.Button("Sidebands", href="/sidebands", color="info")], className="lead"
