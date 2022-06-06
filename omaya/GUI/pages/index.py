@@ -17,7 +17,7 @@ layout = html.Div([
                 html.P(
                     [dbc.Button("IV Curve", href="/iv-curve", color="info", className="me-md-2"),
                     dbc.Button("Power Test", href="/power-test", color="info", className="me-md-2"),
-                    dbc.Button("Plot", href="/plot", color="info", className="me-md-2"),
+                    dbc.Button("General Purpose Plotter", href="/plot", color="info", className="me-md-2"),
                     dbc.Button("Sidebands", href="/sidebands", color="info")], className="lead"
                 ),
             ],

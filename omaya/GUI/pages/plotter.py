@@ -17,9 +17,13 @@ layout = html.Div([
     dbc.Row([
         dbc.Col([
             dbc.Row([
-                html.H1("General Purpose Plotter"),
-                dbc.Button("Return to Dashboard", href="/", color="warning", className="me-md-2", style={"width": "174px"}),
-                html.Br(),
+                dbc.Col([
+                    html.H1("General Purpose Plotter"),
+                    dbc.Button("Return to Dashboard", href="/", color="warning", className="me-md-2", style={"width": "174px"}),
+                    html.Hr()
+                ])
+            ]),
+            dbc.Row([
                 dcc.Upload(
                     id="upload-data",
                     children=html.Div([
@@ -99,6 +103,8 @@ def parse_contentsHTML(contents, filename, date):
         ])
     if skiprows==1:
         comments = dfFirstRow.columns
+    else:
+        comments = ""
     return html.Div([
         html.H5(filename),
         html.H6(comments),
