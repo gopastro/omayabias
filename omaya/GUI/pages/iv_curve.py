@@ -1,12 +1,15 @@
-from dash import Dash, html, dcc, Input, Output, callback, State, dash_table
-#from omaya.utils.sis_test_suite import SISTestSuite
+from dash import Dash, html, dcc, Input, Output, callback, State, dash_table, no_update
+from omaya.utils.sis_test_suite import SISTestSuite
 import dash_bootstrap_components as dbc
 from datetime import datetime
-from pandas import util
+import plotly.express as px
+#from pandas import util # only for testing!
+import pandas as pd
 
-# IV Core Page
+# IV Curve Page
 layout = html.Div([
     html.Div(id="initialization-dummy-div"),
+    dcc.Store(id="iv-dataset"),
     dbc.Row([
         dbc.Col([
             dbc.Row([
@@ -77,7 +80,7 @@ layout = html.Div([
                     dbc.Label("Step Count", html_for="step-input"),
                 ], width=3),
                 dbc.Col([
-                    dbc.Input(type="number", id="step-input", placeholder="Step Count", min=0, max=5, step=0.1)
+                    dbc.Input(type="number", id="step-input", placeholder="Step Count", min=0.1, max=5, step=0.1)
                 ], width=3)
             ], className="mb-3"),
             dbc.Row([
@@ -87,7 +90,7 @@ layout = html.Div([
             ], className="mb-3")
         ]),
         dbc.Col([
-            dcc.Graph(id="graph", style={'width': '750px', 'height': '750px'})
+            dcc.Graph(id="iv-graph", style={'width': '750px', 'height': '750px'})
         ])
     ]),
     html.Hr(),
@@ -96,10 +99,10 @@ layout = html.Div([
 
 @callback(Output("directory-input", "value"),
             Input("initialization-dummy-div", "children"))
-def update_output(children):
+def update_directory(children):
     return datetime.now().strftime("%B%d_%Y")
 
-@callback(Output("output-state", "children"),
+@callback(Output("iv-dataset", "data"),
             Input("submit-button", "n_clicks"),
             State("directory-input", "value"),
             State("new-board-input", "value"),
@@ -111,25 +114,46 @@ def update_output(children):
 def run_test(button_click, directory, new_board, card, device, channel, temperature, step_count):
     if(button_click>0):
         if (directory and new_board and card and device and channel and temperature and step_count) is not None:
-            #sistest = SISTestSuite(directory, oldBoard=True if new_board==1 else False, card=card)
+            sistest = SISTestSuite(directory, oldBoard=True if new_board==1 else False, card=card)
             if temperature == 1:
                 vmin = -1
                 vmax = 1
             else:
                 vmin = -5
                 vmax = 5
-            #df = sistest.dc_iv_sweep(device=str(device), channel=channel, vmin=vmin, vmax=vmax, step=step_count)
-            df= util.testing.makeMixedDataFrame()
-            return html.Div([
-                    html.H5(directory),
-                    dash_table.DataTable(
-                        df.to_dict("records"),
-                        [{"name": i, "id": i} for i in df.columns]
-                    ),
-                    html.Hr()
-                ])
+            df = sistest.dc_iv_sweep(device=str(device), channel=channel, vmin=vmin, vmax=vmax, step=step_count)
+            #df= util.testing.makeMixedDataFrame() # Only for testing!
+            return df.to_json(date_format="iso", orient="split")
         else:
-            return "All parts of the form have not been filled up"
+            return -1
+
+@callback(Output("output-state", "children"),
+            Input("iv-dataset", "data"))
+def run_test(jsonified_data):
+    if jsonified_data != -1 and jsonified_data is not None:
+        df = pd.read_json(jsonified_data, orient="split")
+        return html.Div([
+                dash_table.DataTable(
+                    df.to_dict("records"),
+                    [{"name": i, "id": i} for i in df.columns]
+                ),
+                html.Hr()
+            ])
+    else:
+        return "All parts of the form have not been filled up"
+
+@callback(Output("iv-graph", "figure"),
+            Input("iv-dataset", "data"))
+def make_plot(jsonified_data):
+    if jsonified_data != -1 and jsonified_data is not None:
+        df = pd.read_json(jsonified_data, orient="split")
+        fig = px.line(x=df["Vsis"], y=df["Is"], markers=True, width=750, height=750)
+        fig.update_xaxes(title="Vsis", type="linear")
+        fig.update_yaxes(title="Is", type="linear")
+        fig.update_traces(marker=dict(size=8), mode="lines+markers")
+        return fig
+    else:
+        return no_update
 
 @callback(Output("submit-button", "color"),
             Output("submit-button", "disabled"),
@@ -140,7 +164,7 @@ def run_test(button_click, directory, new_board, card, device, channel, temperat
             Input("channel-input", "value"),
             Input("temp-input", "value"),
             Input("step-input", "value"))
-def run_test(directory, new_board, card, device, channel, temperature, step_count):
+def update_button(directory, new_board, card, device, channel, temperature, step_count):
     if (directory and new_board and card and device and channel and temperature and step_count) is not None:
         return "success", False
     else:
