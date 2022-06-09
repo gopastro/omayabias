@@ -114,7 +114,7 @@ def update_directory(children):
 def run_test(button_click, directory, new_board, card, device, channel, temperature, step_count):
     if(button_click>0):
         if (directory and new_board and card and device and channel and temperature and step_count) is not None:
-            sistest = SISTestSuite(directory, oldBoard=True if new_board==1 else False, card=card)
+            sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
             if temperature == 1:
                 vmin = -1
                 vmax = 1
