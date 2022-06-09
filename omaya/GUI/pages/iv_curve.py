@@ -100,7 +100,7 @@ layout = html.Div([
 @callback(Output("directory-input", "value"),
             Input("initialization-dummy-div", "children"))
 def update_directory(children):
-    return datetime.now().strftime("%B%d_%Y")
+    return "~/DATA/"+datetime.now().strftime("%B%d_%Y")
 
 @callback(Output("iv-dataset", "data"),
             Input("submit-button", "n_clicks"),
@@ -121,7 +121,7 @@ def run_test(button_click, directory, new_board, card, device, channel, temperat
             else:
                 vmin = -5
                 vmax = 5
-            df = sistest.dc_iv_sweep(device=str(device), channel=channel, vmin=vmin, vmax=vmax, step=step_count)
+            df = sistest.dc_iv_sweep(device=str(device), channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False)
             #df= util.testing.makeMixedDataFrame() # Only for testing!
             return df.to_json(date_format="iso", orient="split")
         else:
@@ -140,7 +140,7 @@ def run_test(jsonified_data):
                 html.Hr()
             ])
     else:
-        return "All parts of the form have not been filled up"
+        return ""
 
 @callback(Output("iv-graph", "figure"),
             Input("iv-dataset", "data"))
