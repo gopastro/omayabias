@@ -333,7 +333,7 @@ class LabJackT7(object):
         dataRead = self._spi_read_array(3)
         return dataRead
 
-    def adc_read(self, channel=0, read_in=0, timeout=0.010, card=0, debug=False):
+    def adc_read(self, channel=0, read_in=0, timeout=0.010, card=0, debug=False, cal_file=''):
         """
         UPDATE: channel is the mixer# while read_in is the type 
         of reading.
@@ -366,6 +366,18 @@ class LabJackT7(object):
         counts = (((dataRead[1] << 8) + dataRead[2]) & 0xffffc) << 3
         print("Counts: %d" % counts)
         #counts = (dataRead[1] << 8) + dataRead[2]
+        #if cal_file == None:
+        #    voltage = (counts/float(2**16)) * 4.05
+        #else:
+        #    cal_table = pd.read_csv(cal_file,index_col=0)
+        #    if (read_in==0)|(read_in==1):
+        #        cal_param = ['mix_slope','mix_offset']
+        #    else:
+        #        cal_param = ['','']
+        #    
+        #    slope = cal_table[cal_param[0]][(cal_table.card==card)&(cal_table.channel==channel)].iloc[0]
+        #    # offset =cal_table[cal_param[1]][(cal_table.card==card)&(cal_table.channel==channel)].iloc[0]
+        #    voltage = (counts/float(2**16))*4.05/slope
         voltage = (counts/float(2**16)) * 4.05
         print("Voltage = %.3f" % voltage)
         if debug:
@@ -740,7 +752,7 @@ class LabJackT7(object):
         return ain0_con.mean(), ain1_con.mean()
 
     def power_up_lna(self,card=0, channel=[0,1]):
-        '''Setup for lna dac
+        '''wakes up the dac that controls the drain voltage to lna.
         '''
         LNA_DAC_POWER_CTRL = 0x08
         self.device_select('LNADAC')
@@ -753,7 +765,7 @@ class LabJackT7(object):
         self._spi_write_array([LNA_DAC_POWER_CTRL, 0x00, 0x00, fourth_byte])
 
     def power_down_lna(self,card=0, channel=[0,1]):
-        '''Setup for lna dac
+        '''power down a specific lna dac channel. 
         '''
         LNA_DAC_POWER_CTRL = 0x08
         self.device_select('LNADAC')

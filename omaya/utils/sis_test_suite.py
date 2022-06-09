@@ -34,13 +34,13 @@ class SISTestSuite(object):
         # Startup motor
         self.t7.setup_motor(0)
         self.t7.select_Load('hot')
-        self.pro = Prologix()
-        self.pro.e3631a_output_on()
+        #self.pro = Prologix()
+        #self.pro.e3631a_output_on()
         self.ml = MicroLambda()
         self.if_freq = if_freq
         self.if_frequencies = np.arange(3, 9.2, 0.2) 
         self.offsets = {}
-        self._get_offsets()
+        self._get_offsets() 
         plt.ion() # this command allows to show the plot inside a loop
 
     def _print(self, msg, loglevel=logging.INFO, ):
@@ -48,8 +48,8 @@ class SISTestSuite(object):
             print(msg)
         logging.log(level=loglevel, msg=msg)
         
-    def _get_offsets(self):
-        for channel in range(8):
+    def _get_offsets(self,channels=[0,1,2,3,4,5,6,7]):
+        for channel in channels:
             self.offsets[channel] = self.t7.adc_read(channel, 6, card=self.card) * 2.0
         self._print('Offsets: {}'.format(str(self.offsets)))  
         
@@ -57,7 +57,7 @@ class SISTestSuite(object):
                     vmin=-2, vmax=16, step=0.1,
                     gain_Vs=80, gain_Is=200,
                     timeout=0.010, off=None,
-                    makeplot=True, save=True, xlim=(0,25), ylim=(-10,200)):
+                    makeplot=True, save=True, xlim=(0,25), ylim=(-10,200), Rn=39):
         """
         Function to get the IV sweep with no LO. 
         """
@@ -72,7 +72,7 @@ class SISTestSuite(object):
         for Vsis in vlist:
             dic = {}
             dic['Vsis'] = Vsis
-            voltage_bytes =  set_vbias(Vsis)
+            voltage_bytes =  set_vbias(Vsis, Rn=Rn)
             self.t7.set_dac([channel], voltage_bytes, card=self.card)
             time.sleep(timeout)
             # off = t7.adc_read(channel, 6) * 2.0
@@ -874,3 +874,47 @@ class SISTestSuite(object):
         figname = os.path.join(self.directory, '{:s}_sideband_test_{:.1f}GHz_{:s}mW_IF{:s}_HminusC.png'.format(self.directory, lofreq, power_s, ifs))
         figIV.savefig(figname, dpi=150)
         self._print("Saving figure for PIV Curve to %s" % figname)
+
+    def dc_lna_drain_sweep(self, channel=0, label='0a',
+                           vmin=0, vmax=2.5, step=0.005,
+                           timeout=0.010, makeplot=True, save=True,
+                           xlim=(0,2.6), ylim=(0,55), Igain=199.272):
+        """
+        Function to get the IV sweep with the drain voltage for LNA. 
+        """
+        self._print('Performing LNA IV Sweep on drain voltage and current channel %d label %s' % (channel, label))
+        old_Vdrain = self.t7.adc_read(channel, 2, card=self.card)
+        if vmin<0:
+            vmin=0
+            self._print('LNA minimum Vdrain is 0 V')
+        if vmax>2.5:
+            vmax=2.5
+            self._print('LNA maximum Vdrain is 2.5V')
+        vlist = numpy.arange(vmin, vmax+step, step)
+        lisdic = []
+        for Vdrain in vlist:
+            dic = {}
+            dic['Vdrain'] = Vdrain
+            self.t7.set_lna_drain_voltage(channel, voltage=Vdrain, card=self.card)
+            time.sleep(timeout)
+            Vds = self.t7.adc_read(channel, 2, card=self.card)
+            Ids = self.t7.adc_read(channel, 3, card=self.card)*1e3/Igain
+            dic['Vds'] = Vds
+            dic['Ids'] = Ids
+            lisdic.append(dic)
+        self.t7.set_lna_drain_voltage(channel, voltage=old_Vdrain, card=self.card)
+        time.sleep(timeout)
+        read_Vdrain = self.t7.adc_read(channel,2,card=self.card)
+        self._print("Setting and reading LNA channel %d to voltage: %.3f" % (channel, read_Vdrain))
+        df = pd.DataFrame(lisdic)
+        if makeplot:
+            figIV, axIV = plt.subplots(1,1,figsize=(8,6))
+            axIV.plot(df.Vds, df.Ids, 'o-', label='LNA%s' % label)
+            axIV.legend(loc='best')
+            axIV.set(xlim=xlim, ylim=ylim, xlabel='Vdrain [V]', ylabel='Idrain [mA]', )
+            axIV.grid()
+        if save:
+            fname = os.path.join(self.directory, 'lnaVdrain%s.csv' % label)
+            df.to_csv(fname)
+            self._print('Saving DC IV sweep to %s' % fname)
+        return df

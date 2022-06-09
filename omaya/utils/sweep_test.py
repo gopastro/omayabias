@@ -64,6 +64,26 @@ def Isense(adc_value, gain=285.7, offset=2.0, off=None, RIsense=RIsense_real):
         V_Isense = (adc_value - off)/gain  # voltage across RIsense
     return (V_Isense/RIsense)
 
+def Vsense_cal(Vsense, card, channel, cal_file=''):
+    if cal_file=='':
+        print('Need calibration file')
+        return
+    else:
+        cal_table = pd.read_csv(cal_file, index_col=0)
+        slope = cal_table['mix_slope'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
+        offset = cal_table['mix_offset'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
+        return (Vsense-offset)/slope
+    
+def Isense_cal(Isense, card, channel, cal_file=''):
+    if cal_file=='':
+        print('Need calibration file')
+        return
+    else:
+        cal_table = pd.read_csv(cal_file, index_col=0)
+        slope = cal_table['mix_slope'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
+        offset = cal_table['mix_offset'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
+        return (Isense-offset)/slope   
+
 def sweep(t7, vmin, vmax, step, channel=0, timeout=0.010, off=None, card=0, oldBoard=True,
           gain_Vs=133.33, gain_Is=285.7):
     if off is None:
