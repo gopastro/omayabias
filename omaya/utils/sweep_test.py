@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 #In real mixer block
 # Isense resis is 10 ohms
 # parallel resistance is 200 ohms
-RIsense_real = 10 #5 #5 #20 #5 #5  # 20
+RIsense_real = 5 #5 #5 #20 #5 #5  # 20
 Rsafety_real = 200 #50 #91 #50  # 100
 Rdiv_real = 5e3 #10e3 #5e3
 
@@ -64,7 +64,7 @@ def Isense(adc_value, gain=285.7, offset=2.0, off=None, RIsense=RIsense_real):
         V_Isense = (adc_value - off)/gain  # voltage across RIsense
     return (V_Isense/RIsense)
 
-def Vsense_cal(Vsense, card, channel, cal_file=''):
+def Vsense_cal(Vsense, card, channel, cal_file='CalibrationFile.csv'):
     if cal_file=='':
         print('Need calibration file')
         return
@@ -74,7 +74,7 @@ def Vsense_cal(Vsense, card, channel, cal_file=''):
         offset = cal_table['mix_offset'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
         return (Vsense-offset)/slope
     
-def Isense_cal(Isense, card, channel, cal_file=''):
+def Isense_cal(Isense, card, channel, cal_file='CalibrationFile.csv'):
     if cal_file=='':
         print('Need calibration file')
         return

@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 
 class SISTestSuite(object):
     def __init__(self, directory, if_freq=6, oldBoard=True, card=2,
+                 channels=[0,1,2,3,4,5,6,7],
                  debug=True):
         self.debug = debug
         logfile = datetime.datetime.now().strftime('sistest_%Y_%m_%d_%H%M.log')
@@ -34,13 +35,13 @@ class SISTestSuite(object):
         # Startup motor
         self.t7.setup_motor(0)
         self.t7.select_Load('hot')
-        #self.pro = Prologix()
+        self.pro = Prologix()
         #self.pro.e3631a_output_on()
         self.ml = MicroLambda()
         self.if_freq = if_freq
         self.if_frequencies = np.arange(3, 9.2, 0.2) 
         self.offsets = {}
-        self._get_offsets() 
+        self._get_offsets(channels) 
         plt.ion() # this command allows to show the plot inside a loop
 
     def _print(self, msg, loglevel=logging.INFO, ):
@@ -197,14 +198,17 @@ class SISTestSuite(object):
         # power = raw_input('What is the max power in mW?')
         axIV.plot(df1_hot.Vs, df1_hot.Is, 'o-',
                   label='SIS{:s} {:.0f}GHz {:.0f}mW'.format(device, lofreq, power))
-        axIV.plot(df1_hot.Vs, df1_hot.IFPower/5e-8, 's-',
+        axIV.plot(df1_hot.Vs, df1_hot.IFPower/1e-8, 's-',
                   label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Hot'.format(device, self.if_freq, lofreq, power))
-        axIV.plot(df1_cold.Vs, df1_cold.IFPower/5e-8, 's-',
+        axIV.plot(df1_cold.Vs, df1_cold.IFPower/1e-8, 's-',
                   label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Cold'.format(device, self.if_freq, lofreq, power))
 
-        axIV.set_xlim(0, 25)
+        #axIV.set_xlim(0, 25)
         axIV.set_xlabel('mV')
-        axIV.set_ylim(-10,200)
+        if df1_hot.Is.max()>500:
+            axIV.set_ylim(-10,1000)
+        else:
+            axIV.set_ylim(-10, 500)
         axIV.set_ylabel('uA')
         axIV.legend()
         axIV.grid()
@@ -242,8 +246,8 @@ class SISTestSuite(object):
                                                        makeplot=makeplot, save=save)
         #phot = df_hot[(df_hot.Vs>7.8)&(df_hot.Vs<12)].IFPower
         #pcold = df_cold[(df_cold.Vs>7.8)&(df_cold.Vs<12)].IFPower
-        if device=='4':
-            stepvmin = 11.0
+        #if device=='4':
+        #    stepvmin = 11.0
         phot = df_hot[(df_hot.Vs>stepvmin)&(df_hot.Vs<stepvmax)].IFPower
         pcold = df_cold[(df_cold.Vs>stepvmin)&(df_cold.Vs<stepvmax)].IFPower        
         Th = df_hot.T3.mean()
@@ -683,7 +687,10 @@ class SISTestSuite(object):
                                 title ='%s SIS%s %sGHz Gunn' % (self.directory, sis[j],
                                                                  lofreq)
                             ax.set(ylim=(0, 300),
-                                   title=title)
+                                   title=title,
+                                   ylabel='TR',
+                                   xlabel='IF [GHz]',
+                                   )
                         plt.draw()
                         plt.show()
                         plt.pause(0.001)
