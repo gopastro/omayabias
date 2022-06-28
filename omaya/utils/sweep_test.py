@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 #In real mixer block
 # Isense resis is 10 ohms
 # parallel resistance is 200 ohms
-RIsense_real = 5 #5 #5 #20 #5 #5  # 20
+RIsense_real = 10 #5 #5 #20 #5 #5  # 20
 Rsafety_real = 200 #50 #91 #50  # 100
 Rdiv_real = 5e3 #10e3 #5e3
 
@@ -40,7 +40,7 @@ def dac_voltage(Vsis, Rsafety=Rsafety_real, RIsense=RIsense_real,
     return dac_scale_value
 
 def set_vbias(Vsis, Rsafety=Rsafety_real, RIsense=RIsense_real,
-                Rn=40.0, Rdiv=Rdiv_real, Rb1=0.0, Rb2=10.2e3):
+                Rn=40.0, Rdiv=Rdiv_real, Rb1=0.0, Rb2=10.2e3,return_dac_scale_val=False):
     dac_scale_value = int(dac_voltage(Vsis, Rsafety=Rsafety, RIsense=RIsense,
                                   Rn=Rn, Rdiv=Rdiv, Rb1=Rb1, Rb2=Rb2))
     if dac_scale_value < 0:            
@@ -49,7 +49,10 @@ def set_vbias(Vsis, Rsafety=Rsafety_real, RIsense=RIsense_real,
     if dac_scale_value >= 2**16:
         dac_scale_value = 2**16 - 1
     voltage_bytes = [dac_scale_value >> 8 , dac_scale_value & 0xFF]
-    return voltage_bytes
+    if return_dac_scale_val:
+        return dac_scale_value, voltage_bytes
+    else:
+        return voltage_bytes
 
 def Vsense(adc_value, gain=133.33, offset=2.0, off=None):
     if off is None:
@@ -70,8 +73,8 @@ def Vsense_cal(Vsense, card, channel, cal_file='CalibrationFile.csv'):
         return
     else:
         cal_table = pd.read_csv(cal_file, index_col=0)
-        slope = cal_table['mix_slope'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
-        offset = cal_table['mix_offset'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
+        slope = cal_table['mix_slope'][((cal_table.card==card)&(cal_table.channel==channel))].iloc[0]
+        offset = cal_table['mix_offset'][((cal_table.card==card)&(cal_table.channel==channel))].iloc[0]
         return (Vsense-offset)/slope
     
 def Isense_cal(Isense, card, channel, cal_file='CalibrationFile.csv'):
@@ -181,6 +184,30 @@ def sweep_fluke(t7, fl, vmin, vmax, step, channel=0, timeout=0.010):
         dic['Vs'] = Vs
         dic['Is'] = Is
         dic['Vs_fl'] = Vs_fl
+        lisdic.append(dic)
+    return pd.DataFrame(lisdic)
+
+def sweep_fluke2(t7, fl, vmin, vmax, step, channel=0, timeout=0.010,
+                 fl_meas_label='Vs', card=3, gain_Vs=80, gain_Is=200, off=None):
+    vlist = numpy.arange(vmin, vmax+step, step)
+    lisdic = []
+    for Vsis in vlist:
+        dic = {}
+        dic['Vsis'] = Vsis
+        dac_value, voltage_bytes =  set_vbias(Vsis,return_dac_scale_val=True)
+        dic['dac_value_Vsis'] = dac_value
+        t7.set_dac(channel, voltage_bytes, card=3)
+        time.sleep(timeout)
+        Vs_adc = t7.adc_read(channel, 0, card=3)
+        Vs = Vsense(Vs_adc, gain=gain_Vs, off=off)/1e-3
+        Is_adc = t7.adc_read(channel, 1, card=3)
+        Is = Isense(Is_adc, gain=gain_Is, off=off)/1e-6
+        Vs_fl = fl.measure()[0]
+        dic['Vs'] = Vs
+        dic['Vs_adc'] = Vs_adc
+        dic['Is'] = Is
+        dic['Is_adc'] = Is_adc
+        dic['{:s}_fl'.format(fl_meas_label)] = Vs_fl
         lisdic.append(dic)
     return pd.DataFrame(lisdic)
 
