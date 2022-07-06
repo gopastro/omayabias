@@ -13,13 +13,17 @@ from omaya.utils.sweep_test import get_swept_IF, Vsense, Isense, sweep_IF, \
     sweep, set_vbias, RIsense_real, Rsafety_real, IVcurveTest, \
     loPowerTest
 import matplotlib.pyplot as plt
+from omaya.omayadb.dblog import logOmaya
 
 class SISTestSuite(object):
     def __init__(self, directory, if_freq=6, oldBoard=True, card=2,
                  channels=[0,1,2,3,4,5,6,7],
                  debug=True):
         self.debug = debug
-        logfile = datetime.datetime.now().strftime('sistest_%Y_%m_%d_%H%M.log')
+        logdir = os.path.join(os.getcwd(), 'logs')
+        if not os.path.exists(logdir):
+            os.makedirs(logdir)
+        logfile = os.path.join(logdir, datetime.datetime.now().strftime('sistest_%Y_%m_%d_%H%M.log'))
         logging.basicConfig(filename=logfile,
                             level=logging.INFO,
                             format='%(asctime)s %(levelname)s: %(message)s')
@@ -48,6 +52,11 @@ class SISTestSuite(object):
         if self.debug:
             print(msg)
         logging.log(level=loglevel, msg=msg)
+        try:
+            logOmaya(loglevel, msg)
+        except:
+            # Fail silently
+            pass
         
     def _get_offsets(self,channels=[0,1,2,3,4,5,6,7]):
         for channel in channels:

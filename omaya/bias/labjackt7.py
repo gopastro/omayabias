@@ -8,6 +8,7 @@ import numpy as np
 import datetime
 import os
 import logging
+from omaya.omayadb.dblog import logOmaya
 
 SPI_DEVICES = {
     'MixerDAC0' : [0,0,0],
@@ -76,9 +77,9 @@ class LabJackT7(object):
         self.device = [0,0,0]
         info = ljm.getHandleInfo(self.handle)
         if debug:
-            print("Opened a LabJack with Device type: %i, Connection type: %i,\n"
-                  "Serial number: %i, IP address: %s, Port: %i,\nMax bytes per MB: %i" %
-                  (info[0], info[1], info[2], ljm.numberToIP(info[3]), info[4], info[5]))
+            self._print("Opened a LabJack with Device type: %i, Connection type: %i,\n"
+                        "Serial number: %i, IP address: %s, Port: %i,\nMax bytes per MB: %i" %
+                        (info[0], info[1], info[2], ljm.numberToIP(info[3]), info[4], info[5]))
         if oldBoard:
             self.spi_dionums = SPI_DIONUM_CONF_OLD
         else:
@@ -95,14 +96,19 @@ class LabJackT7(object):
         if self.debug:
             print(msg)
         logging.log(level=loglevel, msg=msg)
+        try:
+            logOmaya(loglevel, msg)
+        except:
+            # Fail silently
+            pass
 
     def setup_motor(self, state, debug=False):
         ljm.eWriteName(self.handle, "FIO5", 1) # Enable
-        print("Enabling the motor")
+        self._print("Enabling the motor")
         ljm.eWriteName(self.handle, "FIO6", 0) # Input A
-        print("Motor on Home")
+        self._print("Motor on Home")
         HLFBstate = ljm.eReadName(self.handle, "FIO7") # HLFB
-        print("Reading HLFB: %0.0f" %(HLFBstate))
+        self._print("Reading HLFB: %0.0f" %(HLFBstate))
 
     def select_Load(self, load):
         if load == "hot":
@@ -110,13 +116,13 @@ class LabJackT7(object):
             HLFBstate = ljm.eReadName(self.handle, "FIO7")
             while(HLFBstate):
                   HLFBstate = ljm.eReadName(self.handle, "FIO7")
-            print("Hot load on")
+            self._print("Hot load on")
             #return 'Hot'                 
         elif load == "cold":
             ljm.eWriteName(self.handle, "FIO6", 1) # Input A
-            print("Cold load ON")
+            self._print("Cold load ON")
         else:
-            print("wrong command: choose either 'cold' or 'hot'")
+            self._print("wrong command: choose either 'cold' or 'hot'", loglevel=logging.ERROR)
 
     def shutdown_motor(self):
         ljm.eWriteName(self.handle, "FIO6", 0) # Input A
@@ -164,9 +170,9 @@ class LabJackT7(object):
         aValues = ljm.eReadNames(self.handle, numFrames, aNames)
 
         if(debug):
-            print("\nSPI Configuration:")
+            self._print("\nSPI Configuration:")
             for i in range(numFrames):
-                print("  %s = %0.0f" % (aNames[i],  aValues[i]))
+                self._print("  %s = %0.0f" % (aNames[i],  aValues[i]))
 
     def spi_mode(self, mode):
         # Selecting Mode CPHA=0 (bit 0), CPOL=0 (bit 1)
@@ -195,7 +201,7 @@ class LabJackT7(object):
                 # dio_name = 'CIO%i'%bit
                 dio_name = 'DIO'+ str(self.spi_dionums['spi_sel_%i'%bit])
                 ljm.eWriteName(self.handle, dio_name, addr[bit])
-            print("Selecting SPI device %s: [%i, %i, %i]" %(device, addr[0], addr[1], addr[2]))
+            self._print("Selecting SPI device %s: [%i, %i, %i]" %(device, addr[0], addr[1], addr[2]))
 
     def card_select(self, card=0): 
         """Selects which Mixer Bias Board (set low)
@@ -584,7 +590,7 @@ class LabJackT7(object):
         scansPerRead = int(scanRate)
         
         scanRate = ljm.eStreamStart(self.handle, scansPerRead, numAddresses, aScanList, scanRate)
-        print('Stream started with scan rate of {:0f} Hz'.format(scanRate))
+        self._print('Stream started with scan rate of {:0f} Hz'.format(scanRate))
 
         # MAX_REQUESTS = 10
         i = 1
@@ -798,7 +804,7 @@ class LabJackT7(object):
             fourth_byte = ((voltage_bytes[1] & 0x0f) << 4)
             self.spi_numbytes(4)
             self._spi_write_array([first_byte, second_byte, third_byte, fourth_byte])
-            print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
+            self._print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
         elif type(channel)==list:
             for chan in channel:
                 self.device_select('LNADAC')
@@ -810,4 +816,4 @@ class LabJackT7(object):
                 fourth_byte = ((voltage_bytes[1] & 0x0f) << 4)
                 self.spi_numbytes(4)
                 self._spi_write_array([first_byte, second_byte, third_byte, fourth_byte])
-                print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
+                self._print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
