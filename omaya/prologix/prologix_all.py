@@ -18,6 +18,7 @@ class Prologix:
                  synth_address=19, lopmeter_address=14,
                  e3631a_address=5,
                  hp83650_address=18,
+                 hp3478a_address=23,
                  #second_pmeter_address=13,
                  asksleep=0.01,):
         self.asksleep = asksleep
@@ -30,6 +31,7 @@ class Prologix:
         self.synth_address = synth_address
         self.e3631a_address = e3631a_address
         self.hp83650_address = hp83650_address
+        self.hp3478a_address = hp3478a_address
         # self.second_pmeter_address = second_pmeter_address
         #self.set_gpib_address()
         self.temperature = {}
@@ -47,7 +49,11 @@ class Prologix:
     def reset(self):
         "Instrument Reset"
         self.write("*RST")
-        
+
+    def trigger(self):
+        "Instrument Trigger. Applies to previously addressed device"
+        self.sock.send(self.byteify('++trg\r\n'))
+
     def set_gpib_address(self, address):
         self.sock.send(self.byteify('++addr %d\r\n' % address))
         # put in auto 0 mode
@@ -231,6 +237,49 @@ class Prologix:
         curr = float(self.ask("MEAS:CURR:DC? %s" % chan))
         return (volt, curr)
 
+    def setup_hp3478a_ac(self, nplc=10.0, range=10.0, nrdgs=2, resolution=0.001):
+        """Setup for AC operations
+        FIXEDZ 1 only for DC
+        """
+        self.nrdgs = nrdgs
+        cmd = 'F2' #AC mode
+        cmd += 'R1' #30V range
+        cmd += 'Z1'  #autozero On
+        cmd += 'N5'  #5digits on
+        self.set_gpib_address(self.hp3478a_address)        
+        self.write(cmd)
+        time.sleep(self.asksleep)
+
+    def take_hp3478a_readings(self, nrdgs=2):
+        self.set_gpib_address(self.hp3478a_address)                
+        self.write('T3')  #single trigger mode
+        time.sleep(self.asksleep)
+        volt = numpy.zeros(nrdgs, dtype=float)
+        for i in range(nrdgs):
+            self.set_gpib_address(self.hp3478a_address)            
+            self.trigger()
+            time.sleep(self.asksleep)
+            self.set_gpib_address(self.hp3478a_address)
+            rdg = float(self.read())
+            volt[i] = rdg
+            logger.debug("%d, %s" % (i, rdg))
+        self.set_gpib_address(self.hp3478a_address)            
+        self.write('T1')
+        time.sleep(self.asksleep)        
+        return volt.mean(), volt.std()
+
+    def take_quick_hp3478a_readings(self, nrdgs=2):
+        self.set_gpib_address(self.hp3478a_address)                
+        self.write('F2R-4Z1N4')
+        time.sleep(0.5)
+        self.set_gpib_address(self.hp3478a_address)                        
+        val = self.read()
+        try:
+            return float(val)
+        except ValueError:
+            return 0.0
+
+    
     # def set_ferrite_voltage(self, voltage):
     #     voltage = abs(voltage)
     #     if voltage > 1.0:
