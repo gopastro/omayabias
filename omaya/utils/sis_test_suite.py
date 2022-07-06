@@ -107,7 +107,8 @@ class SISTestSuite(object):
         if if_freq is None:
             if_freq = self.if_freq
         self._print('Setting IF frequency to %s GHz' % if_freq)
-        self.pro.set_freq(if_freq*1e9)
+        #self.pro.set_freq(if_freq*1e9)
+        self.pro.set_83650_freq(if_freq*1e9)
         if off is None:
             off = self.offsets[channel]
         old_bias = Vsense(self.t7.adc_read(channel, 0, card=self.card), gain=gain_Vs, off=off)/1e-3
@@ -142,7 +143,7 @@ class SISTestSuite(object):
                  timeout=0.010, gain_Vs=80, gain_Is=200,
                  channel=0, ifchannel=0, off=None,):
         self._print('Setting IF frequency to %s GHz' % self.if_freq)
-        self.pro.set_freq(self.if_freq*1e9)
+        self.pro.set_83650_freq(self.if_freq*1e9)
         if off is None:
             off = self.offsets[channel]
         old_bias = Vsense(self.t7.adc_read(channel, 0, card=self.card), gain=gain_Vs, off=off)/1e-3
@@ -205,10 +206,11 @@ class SISTestSuite(object):
 
         #axIV.set_xlim(0, 25)
         axIV.set_xlabel('mV')
-        if df1_hot.Is.max()>500:
-            axIV.set_ylim(-10,1000)
-        else:
-            axIV.set_ylim(-10, 500)
+        #if df1_hot.Is.max()>500:
+        #    axIV.set_ylim(-10,1000)
+        #else:
+        #    axIV.set_ylim(-10, 500)
+        axIV.set_ylim(-10, 400)
         axIV.set_ylabel('uA')
         axIV.legend()
         axIV.grid()
@@ -267,7 +269,7 @@ class SISTestSuite(object):
         for freq in freqs:
 
             dic = {}
-            self.pro.set_freq(freq*1e9)
+            self.pro.set_83650_freq(freq*1e9)
             time.sleep(1.0)
             dic['Frequency'] = freq
             for IFchan in ifchannels:
