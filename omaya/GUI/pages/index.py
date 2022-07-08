@@ -15,9 +15,9 @@ layout = html.Div([
                     "Use the following buttons to reach the specific page you need"
                 ),
                 html.P(
-                    [dbc.Button("IV Curve", href="/iv-curve", color="info", className="me-md-2"),
-                    dbc.Button("Power Test", href="/power-test", color="info", className="me-md-2"),
-                    dbc.Button("General Purpose Plotter", href="/plot", color="info", className="me-md-2"),
+                    [dbc.Button("General Purpose Plotter", href="/plot", color="info", className="me-md-2"),
+                    dbc.Button("IV Curve", href="/iv-curve", color="info", className="me-md-2"),
+                    dbc.Button("Full Power Test", href="/power-test", color="info", className="me-md-2"),
                     dbc.Button("Sidebands", href="/sidebands", color="info")], className="lead"
                 ),
             ],

@@ -1,6 +1,8 @@
-from dash import Dash, html, dcc, Input, Output, callback, State, dash_table, no_update
+from dash import Dash, html, dcc, Input, Output, callback, State, dash_table, no_update, ALL, callback_context
 import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
 import plotly.express as px
+import plotly.io as pio
 import pandas as pd
 import numpy as np
 import datetime
@@ -18,7 +20,7 @@ layout = html.Div([
         dbc.Col([
             dbc.Row([
                 dbc.Col([
-                    html.H1("General Purpose Plotter"),
+                    html.H1("General Purpose Plotter", id="initializer"),
                     dbc.Button("Return to Dashboard", href="/", color="warning", className="me-md-2", style={"width": "174px"}),
                     html.Hr()
                 ])
@@ -43,34 +45,14 @@ layout = html.Div([
                     multiple=True
                 ),
                 dcc.Store(id="dataset"),
-                html.Div([
-                    dcc.Dropdown(id="xaxis-column",placeholder="x-axis"),
-                    dbc.RadioItems(
-                        options=[
-                            {"label": "Linear", "value": 1},
-                            {"label": "Log", "value": 2},
-                        ],
-                        value=1,
-                        id="xaxis-type",
-                    )],
-                    style={"padding-bottom": "5px", "width": "90%"}),
-                html.Div([
-                    dcc.Dropdown(id="yaxis-column",placeholder="y-axis"),
-                    dbc.RadioItems(
-                        options=[
-                            {"label": "Linear", "value": 1},
-                            {"label": "Log", "value": 2},
-                        ],
-                        value=1,
-                        id="yaxis-type",
-                    )],
-                    style={"padding-top": "5px", "width": "90%"}
-                    )
+                dcc.Store(id="filecount"),
+                html.Div(id="axis-options-container",
+                    style={"padding-top": "5px", "width": "90%"})
             ])
         ]),
         dbc.Col([
             dbc.Row([
-                dcc.Graph(id="graph", style={'width': '750px', 'height': '750px'})
+                dcc.Graph(id="graph", style={'width': '1000px', 'height': '750px'})
             ])
         ])
     ]),
@@ -154,51 +136,93 @@ def update_output(list_of_contents, list_of_names, list_of_dates):
         children = [
             parse_contentsJSON(c, n, d) for c, n, d in
             zip(list_of_contents, list_of_names, list_of_dates)]
-        return children[0]
+        return children
 
-@callback(Output("xaxis-column","options"),
-             [Input("dataset","data")])
-def update_dropdown_x(jsonified_data):
+
+@callback(Output("axis-options-container", "children"),
+            Output("filecount", "data"),
+            Input("dataset", "data"))
+def add_axis_options(data):
+    if data is not None:
+        div = []
+        for i in range(len(data)):
+            div.append(html.H3("Graph {}".format(i)))
+            div.append(html.Div([
+                    dcc.Dropdown(id={'type': 'xaxis-column', 'index': i}, placeholder="x-axis"),
+                    dbc.RadioItems(
+                        options=[
+                            {"label": "Linear", "value": 1},
+                            {"label": "Log", "value": 2},
+                        ],
+                        value=1,
+                        id={'type': 'xaxis-type', 'index': i},
+                    )]))
+            div.append(html.Div([
+                    dcc.Dropdown(id={'type': 'yaxis-column', 'index': i}, placeholder="y-axis"),
+                    dbc.RadioItems(
+                        options=[
+                            {"label": "Linear", "value": 1},
+                            {"label": "Log", "value": 2},
+                        ],
+                        value=1,
+                        id={'type': 'yaxis-type', 'index': i},
+                    )]))
+        return div, len(data)
+    else:
+        return no_update, 0
+
+
+@callback(Output({'type': 'xaxis-column', 'index': ALL}, "options"),
+            Output({'type': 'xaxis-column', 'index': ALL},"value"),
+            Output({'type': 'yaxis-column', 'index': ALL},"options"),
+            Output({'type': 'yaxis-column', 'index': ALL},"value"),
+            State("dataset","data"),
+            Input("filecount", "data"))
+def update_dropdown_x(jsonified_data, number):
     if jsonified_data is not None:
-        df = pd.read_json(jsonified_data, orient="split")
-        dropdown_list=[{"label": d_dict[key], "value": key} for key in df.columns]
-        return dropdown_list
-    return []
+        lists = []
+        value = []
+        for i in range(number):
+            df = pd.read_json(jsonified_data[i], orient="split")
+            dropdown_list=[{"label": d_dict[key], "value": key} for key in df.columns]
+            lists.append(dropdown_list)
+            value.append(dropdown_list[0]["value"])
+        return lists, value, lists, value
+    return [], no_update, [], no_update
 
-@callback(Output("yaxis-column","options"),
-             [Input("dataset","data")])
-def update_dropdown_y(jsonified_data):
-    if jsonified_data is not None:
-        df = pd.read_json(jsonified_data, orient="split")
-        dropdown_list=[{"label": d_dict[key], "value": key} for key in df.columns]
-        return dropdown_list
-    return []
-
-@callback(Output("xaxis-column","value"),
-            [Input("xaxis-column","options")])
-def set_xaxis_value(xaxis_options):
-    if xaxis_options:
-        return xaxis_options[0]["value"]
-
-@callback(Output("yaxis-column","value"),
-            [Input("yaxis-column","options")])
-def set_yaxis_value(yaxis_options):
-    if yaxis_options:
-        return yaxis_options[0]["value"]
+@callback(Output({'type': 'xaxis-type', 'index': ALL}, "value"),
+            Input({'type': 'xaxis-type', 'index': ALL},"value"), prevent_initial_call=True)
+def radio_update(value):
+    button_value = callback_context.triggered[0]["value"] if not None else -1
+    if button_value is not -1:
+        return list(map(lambda x: button_value, value))
+    else:
+        return no_update
 
 @callback(Output("graph", "figure"),
-            [Input("dataset", "data"),
-            Input("xaxis-column", "value"),
-            Input("yaxis-column", "value"),
-            Input("xaxis-type", "value"),
-            Input("yaxis-type", "value")])
-def update_graph(jsonified_data, xaxis_column_name, yaxis_column_name, xaxis_type, yaxis_type):
-    if (jsonified_data and xaxis_column_name and yaxis_column_name) is not None:
-        df = pd.read_json(jsonified_data, orient="split")
-        fig = px.line(x=df[xaxis_column_name], y=df[yaxis_column_name], markers=True, width=750, height=750)
-        fig.update_xaxes(title=xaxis_column_name, type="linear" if xaxis_type == 1 else "log")
-        fig.update_yaxes(title=yaxis_column_name, type="linear" if yaxis_type == 1 else "log")
-        fig.update_traces(marker=dict(size=8), mode="lines+markers")
+            Input("dataset", "data"),
+            Input({'type': 'xaxis-column', 'index': ALL}, "value"),
+            Input({'type': 'yaxis-column', 'index': ALL}, "value"),
+            Input({'type': 'xaxis-type', 'index': ALL}, "value"),
+            Input({'type': 'yaxis-type', 'index': ALL}, "value"))
+def update_graph(jsonified_data, xaxis_column_names, yaxis_column_names, xaxis_types, yaxis_types):
+    if (jsonified_data is not None) and len(xaxis_column_names)>0 and len(yaxis_column_names)>0:
+        layout = {"width":1000, "height":750}
+        traces = []
+        yaxis_bool = True
+        for i in range(len(jsonified_data)):
+            df = pd.read_json(jsonified_data[i], orient="split")
+            traces.append({'x': df[xaxis_column_names[i]], 'y': df[yaxis_column_names[i]], 'name': d_dict[yaxis_column_names[i]], 'yaxis': f"y{'' if i==0 else i+1}"})
+            if i==0:
+                layout[f"yaxis{i+1}"] = {'title': d_dict[yaxis_column_names[i]], 'titlefont': {'color': 'black'}, 'tickfont': {'color': 'black'}, "type":"linear" if yaxis_types[i] == 1 else "log"}
+            else:
+                if yaxis_bool:
+                    layout[f"yaxis{i+1}"] = {'title': d_dict[yaxis_column_names[i]], 'side': 'left', 'overlaying': 'y', 'anchor': 'free', 'titlefont': {'color': 'black'}, 'tickfont': {'color': 'black'}, "type":"linear" if yaxis_types[i] == 1 else "log"}
+                else:
+                    layout[f"yaxis{i+1}"] = {'title': d_dict[yaxis_column_names[i]], 'side': 'right', 'overlaying': 'y', 'anchor': 'x', 'titlefont': {'color': 'black'}, 'tickfont': {'color': 'black'}, "type":"linear" if yaxis_types[i] == 1 else "log"}
+            yaxis_bool = not yaxis_bool
+        layout['xaxis'] = {'domain': [0.05, 0.95], "type":"linear" if xaxis_types[0] == 1 else "log"}
+        fig = pio.from_json(pio.to_json({'data': traces, 'layout': layout}))
         return fig
     else:
         return no_update
