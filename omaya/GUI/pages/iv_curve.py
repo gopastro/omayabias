@@ -119,7 +119,7 @@ layout = html.Div([
             ], className="mb-3")
         ]),
         dbc.Col([
-            dcc.Graph(id="iv-graph", style={'width': '750px', 'height': '750px'})
+            dcc.Graph(id="iv-graph", style={'width': '1000px', 'height': '750px'})
         ])
     ]),
     html.Hr(),
@@ -185,7 +185,7 @@ def run_test(jsonified_data):
 def make_plot(jsonified_data):
     if jsonified_data != -1 and jsonified_data is not None:
         df = pd.read_json(jsonified_data, orient="split")
-        fig = px.line(x=df["Vs"], y=df["Is"], markers=True, width=750, height=750)
+        fig = px.line(x=df["Vs"], y=df["Is"], markers=True, width=1000, height=750)
         fig.update_xaxes(title="Sensed Voltage [mV]", type="linear")
         fig.update_yaxes(title="Sensed Current [µA]", type="linear")
         fig.update_traces(marker=dict(size=8), mode="lines+markers")
