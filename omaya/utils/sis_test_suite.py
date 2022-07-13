@@ -13,12 +13,17 @@ from omaya.utils.sweep_test import get_swept_IF, Vsense, Isense, sweep_IF, \
     sweep, set_vbias, RIsense_real, Rsafety_real, IVcurveTest, \
     loPowerTest
 import matplotlib.pyplot as plt
+from omaya.omayadb.dblog import logOmaya
 
 class SISTestSuite(object):
     def __init__(self, directory, if_freq=6, oldBoard=True, card=2,
+                 channels=[0,1,2,3,4,5,6,7],
                  debug=True):
         self.debug = debug
-        logfile = datetime.datetime.now().strftime('sistest_%Y_%m_%d_%H%M.log')
+        logdir = os.path.join(os.getcwd(), 'logs')
+        if not os.path.exists(logdir):
+            os.makedirs(logdir)
+        logfile = os.path.join(logdir, datetime.datetime.now().strftime('sistest_%Y_%m_%d_%H%M.log'))
         logging.basicConfig(filename=logfile,
                             level=logging.INFO,
                             format='%(asctime)s %(levelname)s: %(message)s')
@@ -35,21 +40,26 @@ class SISTestSuite(object):
         self.t7.setup_motor(0)
         self.t7.select_Load('hot')
         self.pro = Prologix()
-        self.pro.e3631a_output_on()
+        #self.pro.e3631a_output_on()
         self.ml = MicroLambda()
         self.if_freq = if_freq
         self.if_frequencies = np.arange(3, 9.2, 0.2) 
         self.offsets = {}
-        self._get_offsets()
+        self._get_offsets(channels) 
         plt.ion() # this command allows to show the plot inside a loop
 
     def _print(self, msg, loglevel=logging.INFO, ):
         if self.debug:
             print(msg)
         logging.log(level=loglevel, msg=msg)
+        try:
+            logOmaya(loglevel, msg)
+        except:
+            # Fail silently
+            pass
         
-    def _get_offsets(self):
-        for channel in range(8):
+    def _get_offsets(self,channels=[0,1,2,3,4,5,6,7]):
+        for channel in channels:
             self.offsets[channel] = self.t7.adc_read(channel, 6, card=self.card) * 2.0
         self._print('Offsets: {}'.format(str(self.offsets)))  
         
@@ -57,7 +67,7 @@ class SISTestSuite(object):
                     vmin=-2, vmax=16, step=0.1,
                     gain_Vs=80, gain_Is=200,
                     timeout=0.010, off=None,
-                    makeplot=True, save=True, xlim=(0,25), ylim=(-10,200)):
+                    makeplot=True, save=True, xlim=(0,25), ylim=(-10,200), Rn=39):
         """
         Function to get the IV sweep with no LO. 
         """
@@ -72,7 +82,7 @@ class SISTestSuite(object):
         for Vsis in vlist:
             dic = {}
             dic['Vsis'] = Vsis
-            voltage_bytes =  set_vbias(Vsis)
+            voltage_bytes =  set_vbias(Vsis, Rn=Rn)
             self.t7.set_dac([channel], voltage_bytes, card=self.card)
             time.sleep(timeout)
             # off = t7.adc_read(channel, 6) * 2.0
@@ -106,7 +116,8 @@ class SISTestSuite(object):
         if if_freq is None:
             if_freq = self.if_freq
         self._print('Setting IF frequency to %s GHz' % if_freq)
-        self.pro.set_freq(if_freq*1e9)
+        #self.pro.set_freq(if_freq*1e9)
+        self.pro.set_83650_freq(if_freq*1e9)
         if off is None:
             off = self.offsets[channel]
         old_bias = Vsense(self.t7.adc_read(channel, 0, card=self.card), gain=gain_Vs, off=off)/1e-3
@@ -141,7 +152,7 @@ class SISTestSuite(object):
                  timeout=0.010, gain_Vs=80, gain_Is=200,
                  channel=0, ifchannel=0, off=None,):
         self._print('Setting IF frequency to %s GHz' % self.if_freq)
-        self.pro.set_freq(self.if_freq*1e9)
+        self.pro.set_83650_freq(self.if_freq*1e9)
         if off is None:
             off = self.offsets[channel]
         old_bias = Vsense(self.t7.adc_read(channel, 0, card=self.card), gain=gain_Vs, off=off)/1e-3
@@ -197,14 +208,18 @@ class SISTestSuite(object):
         # power = raw_input('What is the max power in mW?')
         axIV.plot(df1_hot.Vs, df1_hot.Is, 'o-',
                   label='SIS{:s} {:.0f}GHz {:.0f}mW'.format(device, lofreq, power))
-        axIV.plot(df1_hot.Vs, df1_hot.IFPower/5e-8, 's-',
+        axIV.plot(df1_hot.Vs, df1_hot.IFPower/1e-8, 's-',
                   label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Hot'.format(device, self.if_freq, lofreq, power))
-        axIV.plot(df1_cold.Vs, df1_cold.IFPower/5e-8, 's-',
+        axIV.plot(df1_cold.Vs, df1_cold.IFPower/1e-8, 's-',
                   label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Cold'.format(device, self.if_freq, lofreq, power))
 
-        axIV.set_xlim(0, 25)
+        #axIV.set_xlim(0, 25)
         axIV.set_xlabel('mV')
-        axIV.set_ylim(-10,200)
+        #if df1_hot.Is.max()>500:
+        #    axIV.set_ylim(-10,1000)
+        #else:
+        #    axIV.set_ylim(-10, 500)
+        axIV.set_ylim(-10, 400)
         axIV.set_ylabel('uA')
         axIV.legend()
         axIV.grid()
@@ -242,8 +257,8 @@ class SISTestSuite(object):
                                                        makeplot=makeplot, save=save)
         #phot = df_hot[(df_hot.Vs>7.8)&(df_hot.Vs<12)].IFPower
         #pcold = df_cold[(df_cold.Vs>7.8)&(df_cold.Vs<12)].IFPower
-        if device=='4':
-            stepvmin = 11.0
+        #if device=='4':
+        #    stepvmin = 11.0
         phot = df_hot[(df_hot.Vs>stepvmin)&(df_hot.Vs<stepvmax)].IFPower
         pcold = df_cold[(df_cold.Vs>stepvmin)&(df_cold.Vs<stepvmax)].IFPower        
         Th = df_hot.T3.mean()
@@ -263,7 +278,7 @@ class SISTestSuite(object):
         for freq in freqs:
 
             dic = {}
-            self.pro.set_freq(freq*1e9)
+            self.pro.set_83650_freq(freq*1e9)
             time.sleep(1.0)
             dic['Frequency'] = freq
             for IFchan in ifchannels:
@@ -683,7 +698,10 @@ class SISTestSuite(object):
                                 title ='%s SIS%s %sGHz Gunn' % (self.directory, sis[j],
                                                                  lofreq)
                             ax.set(ylim=(0, 300),
-                                   title=title)
+                                   title=title,
+                                   ylabel='TR',
+                                   xlabel='IF [GHz]',
+                                   )
                         plt.draw()
                         plt.show()
                         plt.pause(0.001)
@@ -874,3 +892,47 @@ class SISTestSuite(object):
         figname = os.path.join(self.directory, '{:s}_sideband_test_{:.1f}GHz_{:s}mW_IF{:s}_HminusC.png'.format(self.directory, lofreq, power_s, ifs))
         figIV.savefig(figname, dpi=150)
         self._print("Saving figure for PIV Curve to %s" % figname)
+
+    def dc_lna_drain_sweep(self, channel=0, label='0a',
+                           vmin=0, vmax=2.5, step=0.005,
+                           timeout=0.010, makeplot=True, save=True,
+                           xlim=(0,2.6), ylim=(0,55), Igain=199.272):
+        """
+        Function to get the IV sweep with the drain voltage for LNA. 
+        """
+        self._print('Performing LNA IV Sweep on drain voltage and current channel %d label %s' % (channel, label))
+        old_Vdrain = self.t7.adc_read(channel, 2, card=self.card)
+        if vmin<0:
+            vmin=0
+            self._print('LNA minimum Vdrain is 0 V')
+        if vmax>2.5:
+            vmax=2.5
+            self._print('LNA maximum Vdrain is 2.5V')
+        vlist = numpy.arange(vmin, vmax+step, step)
+        lisdic = []
+        for Vdrain in vlist:
+            dic = {}
+            dic['Vdrain'] = Vdrain
+            self.t7.set_lna_drain_voltage(channel, voltage=Vdrain, card=self.card)
+            time.sleep(timeout)
+            Vds = self.t7.adc_read(channel, 2, card=self.card)
+            Ids = self.t7.adc_read(channel, 3, card=self.card)*1e3/Igain
+            dic['Vds'] = Vds
+            dic['Ids'] = Ids
+            lisdic.append(dic)
+        self.t7.set_lna_drain_voltage(channel, voltage=old_Vdrain, card=self.card)
+        time.sleep(timeout)
+        read_Vdrain = self.t7.adc_read(channel,2,card=self.card)
+        self._print("Setting and reading LNA channel %d to voltage: %.3f" % (channel, read_Vdrain))
+        df = pd.DataFrame(lisdic)
+        if makeplot:
+            figIV, axIV = plt.subplots(1,1,figsize=(8,6))
+            axIV.plot(df.Vds, df.Ids, 'o-', label='LNA%s' % label)
+            axIV.legend(loc='best')
+            axIV.set(xlim=xlim, ylim=ylim, xlabel='Vdrain [V]', ylabel='Idrain [mA]', )
+            axIV.grid()
+        if save:
+            fname = os.path.join(self.directory, 'lnaVdrain%s.csv' % label)
+            df.to_csv(fname)
+            self._print('Saving DC IV sweep to %s' % fname)
+        return df
