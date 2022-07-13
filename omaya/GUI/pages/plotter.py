@@ -194,7 +194,7 @@ def update_dropdown_x(jsonified_data, number):
             Input({'type': 'xaxis-type', 'index': ALL},"value"), prevent_initial_call=True)
 def radio_update(value):
     button_value = callback_context.triggered[0]["value"] if not None else -1
-    if button_value is not -1:
+    if button_value != -1:
         return list(map(lambda x: button_value, value))
     else:
         return no_update
