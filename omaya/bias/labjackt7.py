@@ -9,6 +9,7 @@ import datetime
 import os
 import logging
 from omaya.omayadb.dblog import logOmaya
+import fasteners
 
 SPI_DEVICES = {
     'MixerDAC0' : [0,0,0],
@@ -68,11 +69,17 @@ SPI_DIONUM_CONF_OLD = {
     }
 
 
+lockfile = os.environ.get('LOCKFILE', '/home/gopal/lock/t7.lock')
 
+class LockException(BaseException):
+    pass
 
 class LabJackT7(object):
-    def __init__(self, debug=True, oldBoard=True):
+    def __init__(self, debug=True, oldBoard=True, api_mode=False):
         self.debug = debug
+        self.api_mode = api_mode
+        if self.api_mode:
+            self.acquire_lock()
         self.handle = ljm.openS("ANY", "ANY", "ANY")
         self.device = [0,0,0]
         info = ljm.getHandleInfo(self.handle)
@@ -87,7 +94,20 @@ class LabJackT7(object):
             self.reset()
         self.setup_SPI()
         self.scanRate = 1200 # for AIN0/AIN1 sampling
+        self.card = 'None'
+        self.card_deselect(card=[0,1,2,3])
+
+    def acquire_lock(self):
+        self.lock = fasteners.InterProcessLock(lockfile)
+        check = self.lock.acquire(blocking=False)
+        if check is False:
+            raise(LockException("Cannot acquire lock. Kill other process"))
         
+    def close(self):
+        ljm.close(self.handle)
+        if self.api_mode:
+            self.lock.release()
+
     def reset(self):
         ljm.eWriteName(self.handle, 'DIO'+ str(self.spi_dionums['reset']), 1)
             
@@ -207,9 +227,33 @@ class LabJackT7(object):
         """Selects which Mixer Bias Board (set low)
         TODO: Need to also deselect other cards in this process
         """
-        card_name = 'DIO'+str(self.spi_dionums['spi_card_%i'%card])
-        ljm.eWriteName(self.handle, card_name, 0)
+        if card == self.card:
+            return
+        else:
+            if self.card == 'None':
+                card_name = 'DIO'+str(self.spi_dionums['spi_card_%i'%card])
+                ljm.eWriteName(self.handle, card_name, 0)
+                self.card = card
+            else:
+                self.card_deselect(self.card)
+                card_name = 'DIO'+str(self.spi_dionums['spi_card_%i'%card])
+                ljm.eWriteName(self.handle, card_name, 0)
+                self.card = card
 
+    def card_deselect(self, card=0):
+        """ Deselects mixer bias board (set high)
+        """
+        if type(card)==list:
+            for c in card:
+                card_name = 'DIO'+str(self.spi_dionums['spi_card_%i'%c])
+                ljm.eWriteName(self.handle, card_name, 1)
+                if c == self.card:
+                    self.card = 'None' 
+        else:
+            card_name = 'DIO'+str(self.spi_dionums['spi_card_%i'%card])
+            ljm.eWriteName(self.handle, card_name, 1)
+            if card == self.card:
+                self.card = 'None'
 
     def _spi_go(self):
         ljm.eWriteName(self.handle, "SPI_GO", 1)  # Do the SPI communications
@@ -288,8 +332,12 @@ class LabJackT7(object):
         self.card_select(card)
         self._set_pca_in()
         dataRead = self._read_pca()
-        print("BoardID: 0x%0x" % dataRead[1])
-        return dataRead[1]
+        if dataRead[1]==0xFF:
+            print('Card {:d} is not responding'.format(card))
+            return
+        else:
+            print("BoardID: 0x%0x" % dataRead[1])
+            return dataRead[1]        
         
     def set_mixer_loop_control(self, channel=0, loop_control='Open', card=0):
         """
@@ -421,7 +469,7 @@ class LabJackT7(object):
         # clear to mid-scale
         self._spi_write_array([0x05, 0x00, 0x00, 0x01])
         # set to LDAC register for all channels
-        self._spi_write_array([0x06, 0x00, 0x00, 0x0F])        
+        self._spi_write_array([0x06, 0x00, 0x00, 0x0F])
         
     def set_dac(self, channel, voltage_bytes=[0x80, 0x00], card=0):
         """ Sets mixer DAC
@@ -760,15 +808,24 @@ class LabJackT7(object):
     def power_up_lna(self,card=0, channel=[0,1]):
         '''wakes up the dac that controls the drain voltage to lna.
         '''
-        LNA_DAC_POWER_CTRL = 0x08
+        LNA_INTERNAL_REF = 0x08
+        self.device_select('LNADAC')
+        self.card_select(card)
+        self.spi_numbytes(4)
+        fourth_byte = 0x01
+        self._spi_write_array([LNA_INTERNAL_REF, 0x00, 0x00, fourth_byte])
+        
+        LNA_DAC_POWER_CTRL = 0x04
         self.device_select('LNADAC')
         self.card_select(card)
         self.spi_numbytes(4)
         if type(channel)==list:
-            fourth_byte = sum([2**chan for chan in channel])
+            fourth_byte = 0xff & (sum([2**chan for chan in channel]))
         elif type(channel) == int:
-            fourth_byte = 2**channel
+            fourth_byte = 0xff & (2**channel)
         self._spi_write_array([LNA_DAC_POWER_CTRL, 0x00, 0x00, fourth_byte])
+        #self._spi_write_array([0x09, 0x08, 0x00, 0x00])
+        self.card_deselect(card)    
 
     def power_down_lna(self,card=0, channel=[0,1]):
         '''power down a specific lna dac channel. 
@@ -782,6 +839,7 @@ class LabJackT7(object):
         elif type(channel) == int:
             fourth_byte = 2**channel
         self._spi_write_array([LNA_DAC_POWER_CTRL, 0x00, 0x03, fourth_byte])
+        self.card_deselect(card)
 
         
     def set_lna_drain_voltage(self, channel, voltage=0.0, card=0):
@@ -817,3 +875,4 @@ class LabJackT7(object):
                 self.spi_numbytes(4)
                 self._spi_write_array([first_byte, second_byte, third_byte, fourth_byte])
                 self._print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
+        #self.card_deselect(card)
