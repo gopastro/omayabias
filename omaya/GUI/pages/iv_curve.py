@@ -1,5 +1,6 @@
 from dash import Dash, html, dcc, Input, Output, callback, State, dash_table, no_update
 from omaya.utils.sis_test_suite import SISTestSuite
+from omaya.omayadb.datamodel import OmayaLog
 import dash_bootstrap_components as dbc
 from datetime import datetime
 import plotly.express as px
@@ -10,7 +11,8 @@ import pandas as pd
 layout = html.Div([
     html.Div(id="initialization-dummy-div"),
     dcc.Store(id="iv-dataset"),
-    dcc.Store(id="card-dataset"),
+    dcc.Store(id="SISTest-object"),
+    #dcc.Store(id="log-dataset"),
     dbc.Row([
         dbc.Col([
             dbc.Row([
@@ -58,6 +60,12 @@ layout = html.Div([
                         #switch=True,
                     ),
                 ], width=4)
+            ], className="mb-3"),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label("!! Once card object is made, it cannot be changed. Please restart site if you need to test a different card !!"),
+                    dbc.Button("Make Object", className="me-md-2", n_clicks=0, id="object-creator-button", color="info"),
+                ]),
             ], className="mb-3"),
             dbc.Row([
                 dbc.Col([
@@ -119,9 +127,12 @@ layout = html.Div([
             ], className="mb-3")
         ]),
         dbc.Col([
-            dcc.Graph(id="iv-graph", style={'width': '1000px', 'height': '750px'})
+            html.H4("Live Logger:", style={"padding-top": "110px"}),
+            html.Div("! I will work on this soon, please open up terminal for current logging !", id="log", style={"height": "575px", "overflow": "auto", "display": "flex", "flex-direction": "column-reverse", "border": "dashed"})
         ])
     ]),
+    html.Hr(),
+    dcc.Graph(id="iv-graph", style={'width': '1000px', 'height': '750px', "margin": "auto"}),
     html.Hr(),
     html.Div(id="output-state")
 ], className="p-5")
@@ -133,7 +144,7 @@ def update_directory(children):
 
 @callback(Output("iv-dataset", "data"),
             Input("submit-button", "n_clicks"),
-            State("card-dataset", "data"),
+            State("SISTest-object", "data"),
             State("device-input", "value"),
             State("channel-input", "value"),
             State("vmin-input", "value"),
@@ -142,26 +153,25 @@ def update_directory(children):
 def run_test(button_click, sistest, device, channel, vmin, vmax, step_count):
     if(button_click>0):
         if (sistest is not None) and (device is not None) and (channel is not None) and (step_count is not None):
-            #for sistest in cardArray:
-            #    df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False)
             df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False)
             #df= util.testing.makeMixedDataFrame() # Only for testing!
             return df.to_json(date_format="iso", orient="split")
         else:
             return -1
 
-@callback(Output("card-dataset", "data"),
-            Input("directory-input", "value"),
-            Input("new-board-input", "value"),
-            Input("card-input", "value"))
-def run_test(directory, new_board, card):
-    #sistestArray = []
-    #for card in cards:
-        #sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
-        #sistestArray.append(sistest)
-    #return sistestArray
-    sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
-    return sistest
+@callback(Output("SISTest-object", "data"),
+            Output("object-creator-button", "color"),
+            Output("object-creator-button", "disabled"),
+            Input("object-creator-button", "n_clicks"),
+            State("directory-input", "value"),
+            State("new-board-input", "value"),
+            State("card-input", "value"))
+def run_test(n_clicks, directory, new_board, card):
+    if(n_clicks>0):
+        sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
+        return sistest, "success", True
+    else:
+        return no_update, "info", False
 
 @callback(Output("output-state", "children"),
             Input("iv-dataset", "data"),
@@ -180,8 +190,7 @@ def run_test(jsonified_data):
         return ""
 
 @callback(Output("iv-graph", "figure"),
-            Input("iv-dataset", "data"),
-            prevent_initial_call=True)
+            Input("iv-dataset", "data"), prevent_initial_call=True)
 def make_plot(jsonified_data):
     if jsonified_data != -1 and jsonified_data is not None:
         df = pd.read_json(jsonified_data, orient="split")
@@ -195,13 +204,12 @@ def make_plot(jsonified_data):
 
 @callback(Output("submit-button", "color"),
             Output("submit-button", "disabled"),
-            Input("directory-input", "value"),
-            Input("card-input", "value"),
+            Input("object-creator-button", "n_clicks"),
             Input("device-input", "value"),
             Input("channel-input", "value"),
             Input("step-input", "value"))
-def update_button(directory, card, device, channel, step_count):
-    if (directory is not None) and (card is not None) and (device is not None) and (channel is not None) and (step_count is not None):
+def update_button(n_clicks, device, channel, step_count):
+    if (n_clicks > 0) and (device is not None) and (channel is not None) and (step_count is not None):
         return "success", False
     else:
         return "danger", True
@@ -223,3 +231,11 @@ def update_vminmax(temperature):
         return -5, 5
     else:
         return -1, 1
+
+# @callback(Output("log", "children"),
+#             Input("log-dataset", "data"), prevent_initial_call=True)
+# def update_logs(dataset):
+#     if dataset is not None:
+#         return dash_table.DataTable(dataset)
+#     else:
+#         return ""
