@@ -292,3 +292,45 @@ def loPowerTest(sis, t7, freqs, freq, power, day, ax):
     if_hot.to_csv('{:s}_2021/sis{:.0f}_{:s}_2021_{:.0f}GHz_{:.0f}mW_ifhot.txt'.format(*labels))
     if_cold.to_csv('{:s}_2021/sis{:.0f}_{:s}_2021_{:.0f}GHz_{:.0f}mW_ifcold.txt'.format(*labels))
     return
+
+def mixer_calibration(sistest, channels=[0,1,2,3,4,5,6,7], makeplot=False, Rn=39, vmin=-20, vmax=20, step=0.1,):
+    df = {}
+    cal_params={}
+    for chan in channels:
+        df[chan] = sistest.dc_iv_sweep(channel=chan, device='{:d}_cal'.format(chan),
+                                       vmin=vmin, vmax=vmax, step=step,
+                                       xlim=(-30, 30), ylim=(-1000, 1000), timeout=0.01, makeplot=makeplot)
+        df[chan]['Isis'] = (df[chan].Vsis*1e-3/Rn)*1e6
+        # setting everything to 0 before starting a new sweep
+        sistest.t7.set_dac([0,1,2,3,4,5,6,7], set_vbias(0, Rn=39), card=2)
+        # Voltage fit. cal_params[chan][0] = slope, cal_params[chan][1] = intercept
+        cal_params[chan] = numpy.polyfit(df[chan].Vsis, df[chan].Vs, deg=1)
+        # After getting the calibration parameters, make a sweep with calibration and plot the calibrated voltages. 
+        # See if this changes the current measurements.
+        # If necessary make a current calibration.
+        # more convenient to use the voltages expected at Isense vs the measured?
+
+    if len(channels)>4:
+        nrows = 2
+        ncols = int(len(channels)/2)
+    else:
+        nrows=1
+        ncols=len(channels)
+        
+    fig, axes = plt.subplots(nrows, ncols, figsize=(8,6))
+    axes = axes.flatten()
+    for chan in channels:
+        axes[chan].plot(df[chan].Vsis, df[chan].Vs, 'o', label='Pre-cal')
+        slope = cal_params[chan][0]
+        intercept = cal_params[chan][1]
+        y_fit = df[chan].Vsis*slope + intercept 
+        axes[chan].plot(df[chan].Vsis, y_fit, '--', label='Fit')
+        y_cal = (df[chan].Vs-intercept)/slope
+        axes[chan].plot(df[chan].Vsis, y_cal, '--', label='Cal')
+        axes[chan].legend()
+        axes[chan].grid()
+        axes[chan].set(xlabel='Vsis [mV]', ylabel='Vsense [mV]')
+    
+    #WORK IN PROGRESS
+    
+    return df, cal_params

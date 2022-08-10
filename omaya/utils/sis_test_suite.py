@@ -102,7 +102,9 @@ class SISTestSuite(object):
             axIV.plot(df.Vs, df.Is, 'o-', label='SIS%s cold' % device)
             axIV.legend(loc='best')
             axIV.set_xlim(xlim)
+            axIV.set_xlabel('Voltage [mV]')
             axIV.set_ylim(ylim)
+            axIV.set_ylabel(r'Current [$\mu$A]')
             axIV.grid()
         if save:
             fname = os.path.join(self.directory, 'sis%s_cold.csv' % device)
