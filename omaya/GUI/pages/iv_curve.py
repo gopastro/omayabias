@@ -2,10 +2,12 @@ from dash import Dash, html, dcc, Input, Output, callback, State, dash_table, no
 from omaya.utils.sis_test_suite import SISTestSuite
 from omaya.omayadb.datamodel import OmayaLog
 import dash_bootstrap_components as dbc
+from types import SimpleNamespace
 from datetime import datetime
 import plotly.express as px
 #from pandas import util # only for testing!
 import pandas as pd
+import json
 
 # IV Curve Page
 layout = html.Div([
@@ -150,9 +152,10 @@ def update_directory(children):
             State("vmin-input", "value"),
             State("vmax-input", "value"),
             State("step-input", "value"))
-def run_test(button_click, sistest, device, channel, vmin, vmax, step_count):
+def run_test(button_click, sistestJSON, device, channel, vmin, vmax, step_count):
     if(button_click>0):
-        if (sistest is not None) and (device is not None) and (channel is not None) and (step_count is not None):
+        if (sistestJSON is not None) and (device is not None) and (channel is not None) and (step_count is not None):
+            sistest = json.loads(sistestJSON, object_hook=lambda d: SimpleNamespace(**d))
             df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False)
             #df= util.testing.makeMixedDataFrame() # Only for testing!
             return df.to_json(date_format="iso", orient="split")
@@ -169,7 +172,7 @@ def run_test(button_click, sistest, device, channel, vmin, vmax, step_count):
 def run_test(n_clicks, directory, new_board, card):
     if(n_clicks>0):
         sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
-        return sistest, "success", True
+        return json.dumps(sistest), "success", True
     else:
         return no_update, "info", False
 
