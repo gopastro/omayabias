@@ -153,7 +153,7 @@ def update_directory(children):
             State("vmin-input", "value"),
             State("vmax-input", "value"),
             State("step-input", "value"))
-def run_test(button_click, sistestJSON, device, channel, vmin, vmax, step_count):
+def run_test(button_click, device, channel, vmin, vmax, step_count):
     if(button_click>0):
         if (sistest is not None) and (device is not None) and (channel is not None) and (step_count is not None):
             df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False)
