@@ -9,6 +9,8 @@ import plotly.express as px
 import pandas as pd
 import json
 
+sistest = None
+
 # IV Curve Page
 layout = html.Div([
     html.Div(id="initialization-dummy-div"),
@@ -146,7 +148,6 @@ def update_directory(children):
 
 @callback(Output("iv-dataset", "data"),
             Input("submit-button", "n_clicks"),
-            State("SISTest-object", "data"),
             State("device-input", "value"),
             State("channel-input", "value"),
             State("vmin-input", "value"),
@@ -154,16 +155,14 @@ def update_directory(children):
             State("step-input", "value"))
 def run_test(button_click, sistestJSON, device, channel, vmin, vmax, step_count):
     if(button_click>0):
-        if (sistestJSON is not None) and (device is not None) and (channel is not None) and (step_count is not None):
-            sistest = json.loads(sistestJSON, object_hook=lambda d: SimpleNamespace(**d))
+        if (sistest is not None) and (device is not None) and (channel is not None) and (step_count is not None):
             df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False)
             #df= util.testing.makeMixedDataFrame() # Only for testing!
             return df.to_json(date_format="iso", orient="split")
         else:
             return -1
 
-@callback(Output("SISTest-object", "data"),
-            Output("object-creator-button", "color"),
+@callback(Output("object-creator-button", "color"),
             Output("object-creator-button", "disabled"),
             Input("object-creator-button", "n_clicks"),
             State("directory-input", "value"),
@@ -172,9 +171,9 @@ def run_test(button_click, sistestJSON, device, channel, vmin, vmax, step_count)
 def run_test(n_clicks, directory, new_board, card):
     if(n_clicks>0):
         sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
-        return json.dumps(sistest), "success", True
+        return "success", True
     else:
-        return no_update, "info", False
+        return "info", False
 
 @callback(Output("output-state", "children"),
             Input("iv-dataset", "data"),
