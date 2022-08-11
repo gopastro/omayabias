@@ -154,6 +154,7 @@ def update_directory(children):
             State("vmax-input", "value"),
             State("step-input", "value"))
 def run_test(button_click, device, channel, vmin, vmax, step_count):
+    global sistest
     if(button_click>0):
         if (sistest is not None) and (device is not None) and (channel is not None) and (step_count is not None):
             df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False)
@@ -170,6 +171,7 @@ def run_test(button_click, device, channel, vmin, vmax, step_count):
             State("card-input", "value"))
 def run_test(n_clicks, directory, new_board, card):
     if(n_clicks>0):
+        global sistest 
         sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
         return "success", True
     else:
