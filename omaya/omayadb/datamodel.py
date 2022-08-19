@@ -44,12 +44,12 @@ class OmayaCal(BaseModel):
     sis_slope = DecimalField()
     sis_offset = DecimalField()
 
-    def get_slope_offset(card_id, sis_ch):
-        slope = OmayaCal.select(sis_slope).where(OmayaCal.card_id == card_id,
-                                                 OmayaCal.sis_ch == sis_ch)
-        offset = OmayaCal.select(sis_offset).where(OmayaCal.card_id == card_id,
-                                                   OmayaCal.sis_ch == sis_ch)
-        return slope, offset
+#    def get_slope_offset(card_id, sis_ch):
+#        slope = OmayaCal.select(sis_slope).where(OmayaCal.card_id == card_id,
+#                                                 OmayaCal.sis_ch == sis_ch)
+#        offset = OmayaCal.select(sis_offset).where(OmayaCal.card_id == card_id,
+#                                                   OmayaCal.sis_ch == sis_ch)
+#        return slope, offset
 
 
 def create_cal_tables():

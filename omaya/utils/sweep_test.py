@@ -6,7 +6,7 @@ import numpy
 import datetime
 from omaya.prologix.prologix_all import Prologix
 import matplotlib.pyplot as plt
-from omaya.omayadb.dblog import logOmaya, calOmaya
+from omaya.omayadb.dblog import logOmaya, calOmaya, get_sis_slope_offset
 
 #In real mixer block
 # Isense resis is 10 ohms
@@ -21,7 +21,7 @@ def RSIS(Rsafety=Rsafety_real, RIsense=RIsense_real, Rn=40.0):
 
 def desired_Vbias(Vsis, Rsafety=Rsafety_real,
                   RIsense=RIsense_real, Rn=40., Rdiv=Rdiv_real,
-                  calibrated=False, slope=1, offset=0):
+                  calibrated=False, slope=1, offset=0, card=2, channel=0):
     """ 
     For a given Vsis in mV (the voltage across the junction)
     calculates the needed voltage from the bias card in volts
@@ -30,14 +30,19 @@ def desired_Vbias(Vsis, Rsafety=Rsafety_real,
     voltage_div_factor = (Rsis/(Rdiv + Rsis)) * (Rn/(Rn + RIsense))
     Vb = Vsis * 1e-3/voltage_div_factor
     if calibrated:
-        #slope = slope
-        #offset = 
-        Vb = (Vb-offset)/slope
+        try:
+            slope, offset = get_sis_slope_offset(card_id=card, sis_ch=channel)
+        except:
+            print('there was an error accesing the database')
+            pass
+            #slope = slope
+            #offset = offset 
+        Vb = (Vb - float(offset)) / float(slope)
     return Vb
 
 def dac_voltage(Vsis, Rsafety=Rsafety_real, RIsense=RIsense_real,
                 Rn=40.0, Rdiv=Rdiv_real, Rb1=3.4e3, Rb2=10.2e3, Vref=4.05,
-                calibrated=False, slope=1, offset=0):
+                calibrated=False, slope=1, offset=0, card=2, channel=0):
     bias_voltage_div_factor = Rb2/(Rb2 + Rb1)
     Vb = desired_Vbias(Vsis, Rsafety=Rsafety, RIsense=RIsense,
                        Rn=Rn, Rdiv=Rdiv, calibrated=calibrated,
@@ -50,7 +55,7 @@ def dac_voltage(Vsis, Rsafety=Rsafety_real, RIsense=RIsense_real,
 def set_vbias(Vsis, Rsafety=Rsafety_real, RIsense=RIsense_real,
               Rn=40.0, Rdiv=Rdiv_real, Rb1=0.0, Rb2=10.2e3,
               return_dac_scale_val=False,
-              calibrated=False, slope=1, offset=0):
+              calibrated=False, slope=1, offset=0, card=2, channel=0):
     dac_scale_value = int(dac_voltage(Vsis, Rsafety=Rsafety, RIsense=RIsense,
                                       Rn=Rn, Rdiv=Rdiv, Rb1=Rb1, Rb2=Rb2,
                                       calibrated=calibrated, slope=slope, offset=offset))
@@ -315,11 +320,12 @@ def mixer_calibration(sistest, channels=[0,1,2,3,4,5,6,7], makeplot=False, Rn=39
         # setting everything to 0 before starting a new sweep
         sistest.t7.set_dac([0,1,2,3,4,5,6,7], set_vbias(0, Rn=39), card=2)
         # Voltage fit.
-        cal_params[chan] = numpy.polyfit(df[chan].Vsis, df[chan].Vs, deg=1)
+        df_fit = df[chan][(df[chan].Vsis<18)&(df[chan].Vsis>-18)]
+        cal_params[chan] = numpy.polyfit(df_fit.Vsis, df_fit.Vs, deg=1)
         slope = cal_params[chan][0]
         offset = cal_params[chan][1]
         try:
-            calOmaya(card_id=sistest.t7.get_boardID(card=card),
+            calOmaya(card_id=sistest.card,
                      sis_ch=chan,
                      sis_slope=slope,
                      sis_offset=offset)
@@ -345,7 +351,6 @@ def mixer_calibration(sistest, channels=[0,1,2,3,4,5,6,7], makeplot=False, Rn=39
         if len(axes)>1:
             axes = axes.flatten()
         
-        
     for chan in channels:
         axes[chan].plot(df[chan].Vsis, df[chan].Vs, 'o', label='Pre-cal')
         y_fit = df[chan].Vsis * slope + offset 
@@ -354,7 +359,5 @@ def mixer_calibration(sistest, channels=[0,1,2,3,4,5,6,7], makeplot=False, Rn=39
         axes[chan].legend()
         axes[chan].grid()
         axes[chan].set(xlabel='Vsis [mV]', ylabel='Vsense [mV]')
-    
-    #WORK IN PROGRESS
     
     return df, cal_params
