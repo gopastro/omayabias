@@ -13,7 +13,7 @@ from omaya.utils.sweep_test import get_swept_IF, Vsense, Isense, sweep_IF, \
     sweep, set_vbias, RIsense_real, Rsafety_real, IVcurveTest, \
     loPowerTest
 import matplotlib.pyplot as plt
-from omaya.omayadb.dblog import logOmaya
+from omaya.omayadb.dblog import logOmaya, calOmaya
 
 class SISTestSuite(object):
     def __init__(self, directory, if_freq=6, oldBoard=True, card=2,
@@ -67,7 +67,8 @@ class SISTestSuite(object):
                     vmin=-2, vmax=16, step=0.1,
                     gain_Vs=80, gain_Is=200,
                     timeout=0.010, off=None,
-                    makeplot=True, save=True, xlim=(0,25), ylim=(-10,200), Rn=39):
+                    makeplot=True, save=True, xlim=(0,25), ylim=(-10,200), Rn=39,
+                    calibrated=False, slope=1, offset=0):
         """
         Function to get the IV sweep with no LO. 
         """
@@ -82,7 +83,8 @@ class SISTestSuite(object):
         for Vsis in vlist:
             dic = {}
             dic['Vsis'] = Vsis
-            voltage_bytes =  set_vbias(Vsis, Rn=Rn)
+            voltage_bytes =  set_vbias(Vsis, Rn=Rn, calibrated=calibrated,
+                                       slope=slope, offset=offset)
             self.t7.set_dac([channel], voltage_bytes, card=self.card)
             time.sleep(timeout)
             # off = t7.adc_read(channel, 6) * 2.0
