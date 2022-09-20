@@ -44,3 +44,5 @@ class MicroLambda(object):
                                               dacNumber = 0, is16Bits = True)
         self.u3.getFeedback(u3.DAC0_16(Value=DAC0_VALUE))
         
+    def close(self):
+        self.u3.close()

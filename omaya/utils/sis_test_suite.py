@@ -33,20 +33,35 @@ class SISTestSuite(object):
         self.oldBoard = oldBoard
         self.card = card
         self.directory = directory
-        self.t7 = LabJackT7(oldBoard=self.oldBoard)
-        self.t7.start_up(channel=[0, 1], loop_control='Closed', card=self.card)
-        #self.t7.start_up(channel=1, loop_control='Closed')
-        # Startup motor
-        self.t7.setup_motor(0)
-        self.t7.select_Load('hot')
-        self.pro = Prologix()
-        #self.pro.e3631a_output_on()
-        self.ml = MicroLambda()
+        # self.t7 = LabJackT7(oldBoard=self.oldBoard)
+        # self.t7.start_up(channel=[0, 1], loop_control='Closed', card=self.card)
+        # #self.t7.start_up(channel=1, loop_control='Closed')
+        # # Startup motor
+        # self.t7.setup_motor(0)
+        # self.t7.select_Load('hot')
+        self.start_all()
+
         self.if_freq = if_freq
         self.if_frequencies = np.arange(3, 9.2, 0.2) 
         self.offsets = {}
         self._get_offsets(channels) 
         plt.ion() # this command allows to show the plot inside a loop
+
+    def start_all(self):
+        self.t7 = LabJackT7(oldBoard=self.oldBoard, api_mode=True)
+        self.t7.start_up(channel=[0, 1], loop_control='Closed', card=self.card)
+        # #self.t7.start_up(channel=1, loop_control='Closed')
+        # # Startup motor
+        self.t7.setup_motor(0)
+        self.t7.select_Load('hot')        
+        self.pro = Prologix()
+        #self.pro.e3631a_output_on()
+        self.ml = MicroLambda()
+        
+    def close_all(self):
+        self.t7.close()
+        self.pro.close()
+        self.ml.close()
 
     def _print(self, msg, loglevel=logging.INFO, ):
         if self.debug:

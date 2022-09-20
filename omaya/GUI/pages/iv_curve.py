@@ -32,7 +32,7 @@ layout = html.Div([
                 ], width=3),
                 dbc.Col([
                     dbc.Input(type="text", id="directory-input", placeholder="Directory here")
-                ], width=4),
+                ], width=8),
             ], className="mb-3"),
             dbc.Row([
                 dbc.Col([
@@ -157,7 +157,7 @@ def run_test(button_click, device, channel, vmin, vmax, step_count):
     global sistest
     if(button_click>0):
         if (sistest is not None) and (device is not None) and (channel is not None) and (step_count is not None):
-            df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False)
+            df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False, calibrated=True)
             #df= util.testing.makeMixedDataFrame() # Only for testing!
             return df.to_json(date_format="iso", orient="split")
         else:
