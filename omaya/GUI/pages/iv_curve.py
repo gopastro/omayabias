@@ -9,13 +9,10 @@ import plotly.express as px
 import pandas as pd
 import json
 
-sistest = None
-
 # IV Curve Page
 layout = html.Div([
     html.Div(id="initialization-dummy-div"),
     dcc.Store(id="iv-dataset"),
-    dcc.Store(id="SISTest-object"),
     #dcc.Store(id="log-dataset"),
     dbc.Row([
         dbc.Col([
@@ -32,7 +29,7 @@ layout = html.Div([
                 ], width=3),
                 dbc.Col([
                     dbc.Input(type="text", id="directory-input", placeholder="Directory here")
-                ], width=4),
+                ], width=5),
             ], className="mb-3"),
             dbc.Row([
                 dbc.Col([
@@ -64,12 +61,6 @@ layout = html.Div([
                         #switch=True,
                     ),
                 ], width=4)
-            ], className="mb-3"),
-            dbc.Row([
-                dbc.Col([
-                    dbc.Label("!! Once card object is made, it cannot be changed. Please restart site if you need to test a different card !!"),
-                    dbc.Button("Make Object", className="me-md-2", n_clicks=0, id="object-creator-button", color="info"),
-                ]),
             ], className="mb-3"),
             dbc.Row([
                 dbc.Col([
@@ -136,7 +127,7 @@ layout = html.Div([
         ])
     ]),
     html.Hr(),
-    dcc.Graph(id="iv-graph", style={'width': '1000px', 'height': '750px', "margin": "auto"}),
+    dcc.Graph(id="iv-graph", style={"margin": "auto"}),
     html.Hr(),
     html.Div(id="output-state")
 ], className="p-5")
@@ -144,43 +135,33 @@ layout = html.Div([
 @callback(Output("directory-input", "value"),
             Input("initialization-dummy-div", "children"))
 def update_directory(children):
-    return "DATA/"+datetime.now().strftime("%B%d_%Y")
+    return "DATA/"+(datetime.now().strftime("%b%d_%Y").lower())
 
 @callback(Output("iv-dataset", "data"),
             Input("submit-button", "n_clicks"),
+            State("directory-input", "value"),
+            State("new-board-input", "value"),
+            State("card-input", "value"),
             State("device-input", "value"),
             State("channel-input", "value"),
             State("vmin-input", "value"),
             State("vmax-input", "value"),
             State("step-input", "value"))
-def run_test(button_click, device, channel, vmin, vmax, step_count):
-    global sistest
+def run_test(button_click, directory, new_board, card, device, channel, vmin, vmax, step_count):
     if(button_click>0):
-        if (sistest is not None) and (device is not None) and (channel is not None) and (step_count is not None):
-            df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False)
+        if (directory is not None) and (new_board is not None) and (card is not None) and (device is not None and device != "") and (channel is not None) and (step_count is not None):
+            sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
+            df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False, calibrated=True)
+            sistest.close()
             #df= util.testing.makeMixedDataFrame() # Only for testing!
             return df.to_json(date_format="iso", orient="split")
         else:
             return -1
 
-@callback(Output("object-creator-button", "color"),
-            Output("object-creator-button", "disabled"),
-            Input("object-creator-button", "n_clicks"),
-            State("directory-input", "value"),
-            State("new-board-input", "value"),
-            State("card-input", "value"))
-def run_test(n_clicks, directory, new_board, card):
-    if(n_clicks>0):
-        global sistest 
-        sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
-        return "success", True
-    else:
-        return "info", False
-
 @callback(Output("output-state", "children"),
             Input("iv-dataset", "data"),
             prevent_initial_call=True)
-def run_test(jsonified_data):
+def print_output(jsonified_data):
     if jsonified_data != -1 and jsonified_data is not None:
         df = pd.read_json(jsonified_data, orient="split")
         return html.Div([
@@ -198,7 +179,7 @@ def run_test(jsonified_data):
 def make_plot(jsonified_data):
     if jsonified_data != -1 and jsonified_data is not None:
         df = pd.read_json(jsonified_data, orient="split")
-        fig = px.line(x=df["Vs"], y=df["Is"], markers=True, width=1000, height=750)
+        fig = px.line(x=df["Vs"], y=df["Is"], markers=True)
         fig.update_xaxes(title="Sensed Voltage [mV]", type="linear")
         fig.update_yaxes(title="Sensed Current [µA]", type="linear")
         fig.update_traces(marker=dict(size=8), mode="lines+markers")
@@ -208,33 +189,30 @@ def make_plot(jsonified_data):
 
 @callback(Output("submit-button", "color"),
             Output("submit-button", "disabled"),
-            Input("object-creator-button", "n_clicks"),
+            Input("directory-input", "value"),
+            Input("new-board-input", "value"),
+            Input("card-input", "value"),
             Input("device-input", "value"),
             Input("channel-input", "value"),
             Input("step-input", "value"))
-def update_button(n_clicks, device, channel, step_count):
-    if (n_clicks > 0) and (device is not None) and (channel is not None) and (step_count is not None):
+def update_button(directory, new_board, card, device, channel, step_count):
+    if (directory is not None) and (new_board is not None) and (card is not None) and (device is not None and device != "") and (channel is not None) and (step_count is not None):
         return "success", False
     else:
         return "danger", True
 
 @callback(Output("vmin-input", "disabled"),
             Output("vmax-input", "disabled"),
-            Input("temp-input", "value"))
-def update_vminmax(temperature):
-    if temperature == 3:
-        return False, False
-    else:
-        return True, True
-
-@callback(Output("vmin-input", "value"),
+            Output("vmin-input", "value"),
             Output("vmax-input", "value"),
             Input("temp-input", "value"))
 def update_vminmax(temperature):
-    if temperature == 2:
-        return -5, 5
+    if temperature == 3:
+        return False, False, no_update, no_update
+    elif temperature == 2:
+        return True, True, -5, 5
     else:
-        return -1, 1
+        return True, True, -1, 1
 
 # @callback(Output("log", "children"),
 #             Input("log-dataset", "data"), prevent_initial_call=True)
