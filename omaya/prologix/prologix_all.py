@@ -22,8 +22,9 @@ class Prologix:
                  #second_pmeter_address=13,
                  asksleep=0.01,):
         self.asksleep = asksleep
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((host, port))
+        self.host = host
+        self.port = port
+        self.open()
         self.lopmeter_address = lopmeter_address
         #self.n_pmeter = n_pmeter
         self.pmeter_address = pmeter_address
@@ -38,6 +39,12 @@ class Prologix:
         #self.idstr = self.idstring()
         #self.idstr = self.idstring()
     
+    def open(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect((self.host, self.port))
+        
+    def close(self):
+        self.sock.close()
 
     def byteify(self, s):
         return s.encode()

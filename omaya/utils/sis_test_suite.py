@@ -13,7 +13,7 @@ from omaya.utils.sweep_test import get_swept_IF, Vsense, Isense, sweep_IF, \
     sweep, set_vbias, RIsense_real, Rsafety_real, IVcurveTest, \
     loPowerTest
 import matplotlib.pyplot as plt
-from omaya.omayadb.dblog import logOmaya
+from omaya.omayadb.dblog import logOmaya, calOmaya
 
 class SISTestSuite(object):
     def __init__(self, directory, if_freq=6, oldBoard=True, card=2,
@@ -33,20 +33,35 @@ class SISTestSuite(object):
         self.oldBoard = oldBoard
         self.card = card
         self.directory = directory
-        self.t7 = LabJackT7(oldBoard=self.oldBoard)
-        self.t7.start_up(channel=[0, 1], loop_control='Closed', card=self.card)
-        #self.t7.start_up(channel=1, loop_control='Closed')
-        # Startup motor
-        self.t7.setup_motor(0)
-        self.t7.select_Load('hot')
-        self.pro = Prologix()
-        #self.pro.e3631a_output_on()
-        self.ml = MicroLambda()
+        # self.t7 = LabJackT7(oldBoard=self.oldBoard)
+        # self.t7.start_up(channel=[0, 1], loop_control='Closed', card=self.card)
+        # #self.t7.start_up(channel=1, loop_control='Closed')
+        # # Startup motor
+        # self.t7.setup_motor(0)
+        # self.t7.select_Load('hot')
+        self.start_all()
+
         self.if_freq = if_freq
         self.if_frequencies = np.arange(3, 9.2, 0.2) 
         self.offsets = {}
         self._get_offsets(channels) 
         plt.ion() # this command allows to show the plot inside a loop
+
+    def start_all(self):
+        self.t7 = LabJackT7(oldBoard=self.oldBoard, api_mode=True)
+        self.t7.start_up(channel=[0, 1], loop_control='Closed', card=self.card)
+        # #self.t7.start_up(channel=1, loop_control='Closed')
+        # # Startup motor
+        self.t7.setup_motor(0)
+        self.t7.select_Load('hot')        
+        self.pro = Prologix()
+        #self.pro.e3631a_output_on()
+        self.ml = MicroLambda()
+        
+    def close_all(self):
+        self.t7.close()
+        self.pro.close()
+        self.ml.close()
 
     def _print(self, msg, loglevel=logging.INFO, ):
         if self.debug:
@@ -67,7 +82,8 @@ class SISTestSuite(object):
                     vmin=-2, vmax=16, step=0.1,
                     gain_Vs=80, gain_Is=200,
                     timeout=0.010, off=None,
-                    makeplot=True, save=True, xlim=(0,25), ylim=(-10,200), Rn=39):
+                    makeplot=True, save=True, xlim=(0,25), ylim=(-10,200), Rn=39,
+                    calibrated=False, slope=1, offset=0):
         """
         Function to get the IV sweep with no LO. 
         """
@@ -82,7 +98,8 @@ class SISTestSuite(object):
         for Vsis in vlist:
             dic = {}
             dic['Vsis'] = Vsis
-            voltage_bytes =  set_vbias(Vsis, Rn=Rn)
+            voltage_bytes =  set_vbias(Vsis, Rn=Rn, calibrated=calibrated,
+                                       slope=slope, offset=offset)
             self.t7.set_dac([channel], voltage_bytes, card=self.card)
             time.sleep(timeout)
             # off = t7.adc_read(channel, 6) * 2.0
@@ -102,7 +119,9 @@ class SISTestSuite(object):
             axIV.plot(df.Vs, df.Is, 'o-', label='SIS%s cold' % device)
             axIV.legend(loc='best')
             axIV.set_xlim(xlim)
+            axIV.set_xlabel('Voltage [mV]')
             axIV.set_ylim(ylim)
+            axIV.set_ylabel(r'Current [$\mu$A]')
             axIV.grid()
         if save:
             fname = os.path.join(self.directory, 'sis%s_cold.csv' % device)

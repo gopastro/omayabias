@@ -6,6 +6,7 @@ import numpy
 import datetime
 from omaya.prologix.prologix_all import Prologix
 import matplotlib.pyplot as plt
+from omaya.omayadb.dblog import logOmaya, calOmaya, get_sis_slope_offset
 
 #In real mixer block
 # Isense resis is 10 ohms
@@ -19,7 +20,8 @@ def RSIS(Rsafety=Rsafety_real, RIsense=RIsense_real, Rn=40.0):
     return Rsis
 
 def desired_Vbias(Vsis, Rsafety=Rsafety_real,
-                  RIsense=RIsense_real, Rn=40., Rdiv=Rdiv_real):
+                  RIsense=RIsense_real, Rn=40., Rdiv=Rdiv_real,
+                  calibrated=False, slope=1, offset=0, card=2, channel=0):
     """ 
     For a given Vsis in mV (the voltage across the junction)
     calculates the needed voltage from the bias card in volts
@@ -27,24 +29,37 @@ def desired_Vbias(Vsis, Rsafety=Rsafety_real,
     Rsis = RSIS(Rsafety, RIsense, Rn) # effective resistance
     voltage_div_factor = (Rsis/(Rdiv + Rsis)) * (Rn/(Rn + RIsense))
     Vb = Vsis * 1e-3/voltage_div_factor
+    if calibrated:
+        try:
+            slope, offset = get_sis_slope_offset(card_id=card, sis_ch=channel)
+        except:
+            print('there was an error accesing the database')
+            pass
+            #slope = slope
+            #offset = offset 
+        Vb = (Vb - float(offset)) / float(slope)
     return Vb
 
 def dac_voltage(Vsis, Rsafety=Rsafety_real, RIsense=RIsense_real,
-                Rn=40.0, Rdiv=Rdiv_real, Rb1=3.4e3, Rb2=10.2e3, Vref=4.05):
+                Rn=40.0, Rdiv=Rdiv_real, Rb1=3.4e3, Rb2=10.2e3, Vref=4.05,
+                calibrated=False, slope=1, offset=0, card=2, channel=0):
     bias_voltage_div_factor = Rb2/(Rb2 + Rb1)
     Vb = desired_Vbias(Vsis, Rsafety=Rsafety, RIsense=RIsense,
-                       Rn=Rn, Rdiv=Rdiv)
+                       Rn=Rn, Rdiv=Rdiv, calibrated=calibrated,
+                       slope=slope, offset=offset)
     dac_set_point_voltage = Vb/bias_voltage_div_factor
     #dac_scale_value = (dac_set_point_voltage + 4.) * 2**16/8.0
     dac_scale_value = (dac_set_point_voltage + Vref) * 2**16/(2*Vref)
     return dac_scale_value
 
 def set_vbias(Vsis, Rsafety=Rsafety_real, RIsense=RIsense_real,
-                Rn=40.0, Rdiv=Rdiv_real, Rb1=0.0, Rb2=10.2e3,return_dac_scale_val=False):
+              Rn=40.0, Rdiv=Rdiv_real, Rb1=0.0, Rb2=10.2e3,
+              return_dac_scale_val=False,
+              calibrated=False, slope=1, offset=0, card=2, channel=0):
     dac_scale_value = int(dac_voltage(Vsis, Rsafety=Rsafety, RIsense=RIsense,
-                                  Rn=Rn, Rdiv=Rdiv, Rb1=Rb1, Rb2=Rb2))
+                                      Rn=Rn, Rdiv=Rdiv, Rb1=Rb1, Rb2=Rb2,
+                                      calibrated=calibrated, slope=slope, offset=offset))
     if dac_scale_value < 0:            
-
         dac_scale_value = 0
     if dac_scale_value >= 2**16:
         dac_scale_value = 2**16 - 1
@@ -67,25 +82,25 @@ def Isense(adc_value, gain=285.7, offset=2.0, off=None, RIsense=RIsense_real):
         V_Isense = (adc_value - off)/gain  # voltage across RIsense
     return (V_Isense/RIsense)
 
-def Vsense_cal(Vsense, card, channel, cal_file='CalibrationFile.csv'):
-    if cal_file=='':
-        print('Need calibration file')
-        return
-    else:
-        cal_table = pd.read_csv(cal_file, index_col=0)
-        slope = cal_table['mix_slope'][((cal_table.card==card)&(cal_table.channel==channel))].iloc[0]
-        offset = cal_table['mix_offset'][((cal_table.card==card)&(cal_table.channel==channel))].iloc[0]
-        return (Vsense-offset)/slope
+#def Vsense_cal(Vsense, card, channel, cal_file='CalibrationFile.csv'):
+#    if cal_file=='':
+#        print('Need calibration file')
+#        return
+#    else:
+#        cal_table = pd.read_csv(cal_file, index_col=0)
+#        slope = cal_table['mix_slope'][((cal_table.card==card)&(cal_table.channel==channel))].iloc[0]
+#        offset = cal_table['mix_offset'][((cal_table.card==card)&(cal_table.channel==channel))].iloc[0]
+#        return (Vsense-offset)/slope
     
-def Isense_cal(Isense, card, channel, cal_file='CalibrationFile.csv'):
-    if cal_file=='':
-        print('Need calibration file')
-        return
-    else:
-        cal_table = pd.read_csv(cal_file, index_col=0)
-        slope = cal_table['mix_slope'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
-        offset = cal_table['mix_offset'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
-        return (Isense-offset)/slope   
+#def Isense_cal(Isense, card, channel, cal_file='CalibrationFile.csv'):
+#    if cal_file=='':
+#        print('Need calibration file')
+#        return
+#    else:
+#        cal_table = pd.read_csv(cal_file, index_col=0)
+#        slope = cal_table['mix_slope'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
+#        offset = cal_table['mix_offset'][((cal_table.card==3)&(cal_table.channel==0))].iloc[0]
+#        return (Isense-offset)/slope   
 
 def sweep(t7, vmin, vmax, step, channel=0, timeout=0.010, off=None, card=0, oldBoard=True,
           gain_Vs=133.33, gain_Is=285.7):
@@ -292,3 +307,57 @@ def loPowerTest(sis, t7, freqs, freq, power, day, ax):
     if_hot.to_csv('{:s}_2021/sis{:.0f}_{:s}_2021_{:.0f}GHz_{:.0f}mW_ifhot.txt'.format(*labels))
     if_cold.to_csv('{:s}_2021/sis{:.0f}_{:s}_2021_{:.0f}GHz_{:.0f}mW_ifcold.txt'.format(*labels))
     return
+
+def mixer_calibration(sistest, channels=[0,1,2,3,4,5,6,7], makeplot=False, Rn=39, vmin=-20, vmax=20, step=0.1,):
+    df = {}
+    cal_params={}
+    df_cal = {}
+    for chan in channels:
+        df[chan] = sistest.dc_iv_sweep(channel=chan, device='{:d}_uncal'.format(chan),
+                                       vmin=vmin, vmax=vmax, step=step,
+                                       xlim=(-30, 30), ylim=(-1000, 1000), timeout=0.01, makeplot=makeplot)
+        df[chan]['Isis'] = (df[chan].Vsis*1e-3/Rn)*1e6
+        # setting everything to 0 before starting a new sweep
+        sistest.t7.set_dac([0,1,2,3,4,5,6,7], set_vbias(0, Rn=39), card=2)
+        # Voltage fit.
+        df_fit = df[chan][(df[chan].Vsis<18)&(df[chan].Vsis>-18)]
+        cal_params[chan] = numpy.polyfit(df_fit.Vsis, df_fit.Vs, deg=1)
+        slope = cal_params[chan][0]
+        offset = cal_params[chan][1]
+        try:
+            calOmaya(card_id=sistest.card,
+                     sis_ch=chan,
+                     sis_slope=slope,
+                     sis_offset=offset)
+        except:
+            print('Failed to save to database')
+            pass
+        # After getting the calibration parameters, make a sweep with calibration and plot the calibrated voltages.
+        df_cal[chan] = sistest.dc_iv_sweep(channel=chan, device='{:d}_cal'.format(chan),
+                                           vmin=vmin, vmax=vmax, step=step,
+                                           xlim=(-30, 30), ylim=(-1000, 1000), timeout=0.01,
+                                           makeplot=makeplot,
+                                           calibrated=True, slope=slope, offset=offset)
+
+    if len(channels)>4:
+        nrows = 2
+        ncols = int(round(len(channels)/nrows))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(8,6))
+        axes = axes.flatten()
+    else:
+        nrows=1
+        ncols=len(channels)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(8,6))
+        if len(axes)>1:
+            axes = axes.flatten()
+        
+    for chan in channels:
+        axes[chan].plot(df[chan].Vsis, df[chan].Vs, 'o', label='Pre-cal')
+        y_fit = df[chan].Vsis * slope + offset 
+        axes[chan].plot(df[chan].Vsis, y_fit, '--', label='Fit')
+        axes[chan].plot(df_cal[chan].Vsis, df_cal[chan].Vs, 'o', label='Cal')
+        axes[chan].legend()
+        axes[chan].grid()
+        axes[chan].set(xlabel='Vsis [mV]', ylabel='Vsense [mV]')
+    
+    return df, cal_params
