@@ -15,10 +15,11 @@ layout = html.Div([
                     "Use the following buttons to reach the specific page you need"
                 ),
                 html.P(
-                    [dbc.Button("General Purpose Plotter", href="/plot", color="info", className="me-md-2"),
-                    dbc.Button("IV Curve", href="/iv-curve", color="info", className="me-md-2"),
-                    dbc.Button("Full Power Test", href="/power-test", color="info", className="me-md-2"),
-                    dbc.Button("Sidebands", href="/sidebands", color="info")], className="lead"
+                    [dbc.Button("General Purpose Plotter", href="/plot", color="info", className="me-md-2", external_link=True, target="_blank"),
+                    dbc.Button("IV Curve", href="/iv-curve", color="info", className="me-md-2", external_link=True, target="_blank"),
+                    dbc.Button("Full Power Test", href="/power-test", color="info", className="me-md-2", external_link=True, target="_blank"),
+                    dbc.Button("LNA Test", href="/lna-test", color="info", className="me-md-2", external_link=True, target="_blank"),
+                    dbc.Button("Sidebands", href="/sidebands", color="info", external_link=True, target="_blank")], className="lead"
                 ),
             ],
             fluid=True,
