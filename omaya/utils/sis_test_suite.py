@@ -62,6 +62,7 @@ class SISTestSuite(object):
         self.t7.close()
         self.pro.close()
         self.ml.close()
+        self._print("Connection Closed.")
 
     def _print(self, msg, loglevel=logging.INFO, ):
         if self.debug:
