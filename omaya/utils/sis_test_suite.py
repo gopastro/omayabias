@@ -17,7 +17,8 @@ from omaya.omayadb.dblog import logOmaya, calOmaya
 
 class SISTestSuite(object):
     def __init__(self, directory, if_freq=6, oldBoard=True, card=2,
-                 channels=[0,1,2,3,4,5,6,7],
+                 channels=[0,1,2,3,4,5,6,7], use_prologix=True,
+                 use_microlambda=True,
                  debug=True):
         self.debug = debug
         logdir = os.path.join(os.getcwd(), 'logs')
@@ -33,6 +34,8 @@ class SISTestSuite(object):
         self.oldBoard = oldBoard
         self.card = card
         self.directory = directory
+        self.use_prologix = use_prologix
+        self.use_microlambda = use_microlambda
         # self.t7 = LabJackT7(oldBoard=self.oldBoard)
         # self.t7.start_up(channel=[0, 1], loop_control='Closed', card=self.card)
         # #self.t7.start_up(channel=1, loop_control='Closed')
@@ -53,15 +56,19 @@ class SISTestSuite(object):
         # #self.t7.start_up(channel=1, loop_control='Closed')
         # # Startup motor
         self.t7.setup_motor(0)
-        self.t7.select_Load('hot')        
-        self.pro = Prologix()
+        self.t7.select_Load('hot')
+        if self.use_prologix:
+            self.pro = Prologix()
         #self.pro.e3631a_output_on()
-        self.ml = MicroLambda()
+        if self.use_microlambda:
+            self.ml = MicroLambda()
         
     def close_all(self):
         self.t7.close()
-        self.pro.close()
-        self.ml.close()
+        if self.use_prologix:        
+            self.pro.close()
+        if self.use_microlambda:            
+            self.ml.close()
 
     def _print(self, msg, loglevel=logging.INFO, ):
         if self.debug:
@@ -99,7 +106,8 @@ class SISTestSuite(object):
             dic = {}
             dic['Vsis'] = Vsis
             voltage_bytes =  set_vbias(Vsis, Rn=Rn, calibrated=calibrated,
-                                       slope=slope, offset=offset)
+                                       slope=slope, card=self.card, channel=channel,
+                                       offset=offset)
             self.t7.set_dac([channel], voltage_bytes, card=self.card)
             time.sleep(timeout)
             # off = t7.adc_read(channel, 6) * 2.0
@@ -109,7 +117,8 @@ class SISTestSuite(object):
             dic['Vs'] = Vs
             dic['Is'] = Is
             lisdic.append(dic)
-        vbytes = set_vbias(old_bias)
+        vbytes = set_vbias(old_bias, Rn=Rn, calibrated=calibrated, slope=slope,
+                           card=self.card, channel=channel, offset=offset)
         self.t7.set_dac([channel], vbytes, card=self.card)
         # off = t7.adc_read(channel, 6) * 2.0
         self._print("Setting and reading channel %d to voltage: %.3f" % (channel, Vsense(self.t7.adc_read(channel, 0, card=self.card), gain=gain_Vs, off=off)/1e-3))
@@ -145,7 +154,8 @@ class SISTestSuite(object):
         for Vsis in vlist:
             dic = {}
             dic['Vsis'] = Vsis
-            voltage_bytes =  set_vbias(Vsis)
+            voltage_bytes =  set_vbias(Vsis, Rn=40, calibrated=True, 
+                                       card=self.card, channel=channel, offset=off)
             self.t7.set_dac([channel], voltage_bytes, card=self.card)
             time.sleep(timeout)
             off = self.t7.adc_read(channel, 6, card=self.card) * 2.0
@@ -161,7 +171,8 @@ class SISTestSuite(object):
                 power = self.pro.get_linear_power(IF=ifchannel)
                 dic['IFPower_%d' % ifchannel] = power
             lisdic.append(dic)
-        vbytes = set_vbias(old_bias)
+        vbytes = set_vbias(old_bias, Rn=40, calibrated=True, 
+                           card=self.card, channel=channel, offset=off)
         self.t7.set_dac([channel], vbytes, card=self.card)
         off = self.t7.adc_read(channel, 6, card=self.card) * 2.0
         self._print("Setting and reading channel %d to voltage: %.3f" % (channel, Vsense(self.t7.adc_read(channel, 0, card=self.card), gain=gain_Vs, off=off)/1e-3))
@@ -180,7 +191,8 @@ class SISTestSuite(object):
         for Vsis in vlist:
             dic = {}
             dic['Vsis'] = Vsis
-            voltage_bytes =  set_vbias(Vsis)
+            voltage_bytes =  set_vbias(Vsis, Rn=40, calibrated=True, 
+                                       card=self.card, channel=channel, offset=off)
             self.t7.set_dac([channel], voltage_bytes, card=self.card)
             time.sleep(timeout)
             off = self.t7.adc_read(channel, 6, card=self.card) * 2.0
@@ -195,20 +207,75 @@ class SISTestSuite(object):
             power = self.pro.get_linear_power(IF=ifchannel)
             dic['IFPower'] = power
             lisdic.append(dic)
-        vbytes = set_vbias(old_bias)
+        vbytes = set_vbias(old_bias, Rn=40, calibrated=True, 
+                           card=self.card, channel=channel, offset=off)
         self.t7.set_dac([channel], vbytes, card=self.card)
         off = self.t7.adc_read(channel, 6, card=self.card) * 2.0
         self._print("Setting and reading channel %d to voltage: %.3f" % (channel, Vsense(self.t7.adc_read(channel, 0, card=self.card), gain=gain_Vs, off=off)/1e-3))
         return pd.DataFrame(lisdic)
+
+    def _check_level(self, current_power, opt_power, threshold=0.002):
+        if abs(current_power - opt_power) <= threshold:
+            return 0
+        elif current_power > (opt_power + threshold):
+            return 1
+        else:
+            return -1
+    
+    def set_opt_volt(self, channel, opt_volt, gain_Vs=80, 
+                     vstep=0.05, threshold=0.1, vmin=6,
+                     vmax=12):
+        off = self.t7.adc_read(channel, 6, card=self.card) * 2.0 
+        if opt_volt > 0.0:
+            vb = 8.0
+            vmin = 6
+            vmax = 12
+        else:
+            vb = -8.0
+            vmin = -12
+            vmax = -6
+
+        self.t7.set_dac([channel], set_vbias(vb, Rn=40.0, card=self.card, calibrated=True,
+                                             channel=channel),
+                        card=self.card)
+        time.sleep(0.010)
+        Vs = Vsense(self.t7.adc_read(channel, 0, card=self.card),
+                    gain=gain_Vs, off=off)/1e-3    
+        check = self._check_level(Vs, opt_volt, threshold=threshold)
+        print("check: %s, vb=%s, current_voltage: %s, opt_volt: %s" % (check, vb, Vs, opt_volt))
+        while check != 0:
+            if check == 1:
+                vb = vb - vstep
+                if vb <= vmin:
+                    print("Reached minimum vmin")
+                    return
+            if check == -1:
+                vb = vb + vstep
+                if vb >= vmax:
+                    print("Reached max vmax")
+                    return
+            self.t7.set_dac([channel], set_vbias(vb, Rn=40.0, card=self.card, calibrated=True,
+                                                 channel=channel),
+                            card=self.card)
+            time.sleep(0.010)
+            Vs = Vsense(self.t7.adc_read(channel, 0, card=self.card),
+                        gain=gain_Vs, off=off)/1e-3    
+            check = self._check_level(Vs, opt_volt, threshold=threshold)
+            print("check: %s, vb = %s, current_voltage: %s, opt_volt: %s" % (check, vb, Vs, opt_volt))
+        return vb
+
+    
     
     def PIV_Curves(self, channel=0, device='3',
                    ifchannel=0,
                    df_noLO=None, lofreq=216,
                    vmin=-2, vmax=16, step=0.1,
                    gain_Vs=80, gain_Is=200, 
-                   makeplot=True, save=True):
-        figIV, axIV = plt.subplots(1,1,figsize=(8,6))
-        axIV.plot(df_noLO.Vs, df_noLO.Is, 'o-', label='SIS%s noLO' % device)
+                   makeplot=True, save=True,
+                   filename_mod=''):
+        if makeplot:
+            figIV, axIV = plt.subplots(1,1,figsize=(8,6))
+            axIV.plot(df_noLO.Vs, df_noLO.Is, 'o-', label='SIS%s noLO' % device)
 
         self._print("Moving to Hot Load")
         self.t7.select_Load('hot')
@@ -225,42 +292,164 @@ class SISTestSuite(object):
 
         power = float(self.pro.get_lo_power())/1e-3
         # power = raw_input('What is the max power in mW?')
-        axIV.plot(df1_hot.Vs, df1_hot.Is, 'o-',
-                  label='SIS{:s} {:.0f}GHz {:.0f}mW'.format(device, lofreq, power))
-        axIV.plot(df1_hot.Vs, df1_hot.IFPower/1e-8, 's-',
-                  label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Hot'.format(device, self.if_freq, lofreq, power))
-        axIV.plot(df1_cold.Vs, df1_cold.IFPower/1e-8, 's-',
-                  label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Cold'.format(device, self.if_freq, lofreq, power))
+        if makeplot:
+            axIV.plot(df1_hot.Vs, df1_hot.Is, 'o-',
+                      label='SIS{:s} {:.0f}GHz {:.0f}mW'.format(device, lofreq, power))
+            axIV.plot(df1_hot.Vs, df1_hot.IFPower/1e-8, 's-',
+                      label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Hot'.format(device, self.if_freq, lofreq, power))
+            axIV.plot(df1_cold.Vs, df1_cold.IFPower/1e-8, 's-',
+                      label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Cold'.format(device, self.if_freq, lofreq, power))
 
-        #axIV.set_xlim(0, 25)
-        axIV.set_xlabel('mV')
-        #if df1_hot.Is.max()>500:
-        #    axIV.set_ylim(-10,1000)
-        #else:
-        #    axIV.set_ylim(-10, 500)
-        axIV.set_ylim(-10, 400)
-        axIV.set_ylabel('uA')
-        axIV.legend()
-        axIV.grid()
-        axIV.set_title('{:s} SIS{:s} {:.0f}GHz'.format(self.directory, device, lofreq))
-        #figIV.show()
-        plt.draw()
-        plt.show()
-        plt.pause(0.001)
-
-        figname = os.path.join(self.directory, '{:s}_sis{:s}_{:.0f}GHz_ivcurves.png'.format(self.directory, device, lofreq))
-        figIV.savefig(figname, dpi=150)
-        self._print("Saving figure for PIV Curve to %s" % figname)
+            #axIV.set_xlim(0, 25)
+            axIV.set_xlabel('mV')
+            #if df1_hot.Is.max()>500:
+            #    axIV.set_ylim(-10,1000)
+            #else:
+            #    axIV.set_ylim(-10, 500)
+            axIV.set_ylim(-10, 400)
+            axIV.set_ylabel('uA')
+            axIV.legend()
+            axIV.grid()
+            axIV.set_title('{:s} SIS{:s} {:.0f}GHz'.format(self.directory, device, lofreq))
+            #figIV.show()
+            plt.draw()
+            plt.show()
+            plt.pause(0.001)
+            
+            if save:
+                figname = os.path.join(self.directory, '{:s}_sis{:s}_{:.0f}GHz_ivcurves.png'.format(self.directory, device, lofreq))
+                figIV.savefig(figname, dpi=150)
+                self._print("Saving figure for PIV Curve to %s" % figname)
 
         fname_hot = os.path.join(self.directory,
-                                 'sis{:s}_{:s}_{:.0f}GHz_{:.0f}mW_IF6_hot.txt'.format(device, self.directory, lofreq, power))
+                                 'sis{:s}_{:s}_{:.0f}GHz_{:.0f}mW_IF6_hot{:s}.txt'.format(device, self.directory, lofreq, power, filename_mod))
         fname_cold = os.path.join(self.directory,
-                                  'sis{:s}_{:s}_{:.0f}GHz_{:.0f}mW_IF6_cold.txt'.format(device, self.directory, lofreq, power))
+                                  'sis{:s}_{:s}_{:.0f}GHz_{:.0f}mW_IF6_cold{:s}.txt'.format(device, self.directory, lofreq, power, filename_mod))
         df1_hot.to_csv(fname_hot)
         df1_cold.to_csv(fname_cold)
         self._print("Saving hot and cold PIV csv files to %s and %s" % (fname_hot, fname_cold))
-        return df1_hot, df1_cold, figIV, axIV
-        
+        if makeplot:
+            return df1_hot, df1_cold, figIV, axIV
+        else:
+            return df1_hot, df1_cold
+
+    def find_optimal_bias_and_power(self, channel=0, device='3',
+                                    ifchannel=0, df_noLO=None, lofreq=216,
+                                    vmin=6.2, vmax=11, step=0.1,
+                                    ferrmin=-0.5, ferrmax=0.8, ferrstep=-0.2,
+                                    makeplot=False):
+        lisdic = []
+        ferr_values = numpy.arange(ferrmax, ferrmin, ferrstep)
+        self.set_lo_frequency(lofreq)
+        for ferr_value in ferr_values:
+            self.set_lo_power_voltage(ferr_value)
+            time.sleep(0.5)
+            df_hot, df_cold = self.PIV_Curves(channel=channel, device=device,
+                                              ifchannel=ifchannel, df_noLO=df_noLO,
+                                              lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                              step=step, makeplot=makeplot)
+            ph = df_hot.IFPower
+            pc = df_cold.IFPower
+            th = df_hot.T3.mean()
+            tc = df_cold.T7.mean()
+            y = ph/pc
+            TR = (th - y*tc)/(y-1)
+            print(TR)
+            dic = {}
+            dic['Vsmin'] = df_hot.Vs[y.idxmax()]
+            dic['Ismin'] = df_hot.Is[y.idxmax()]
+            dic['ferr'] = ferr_value
+            dic['TR'] = TR[y.idxmax()]
+            dic['y'] = y.max()
+            lisdic.append(dic)
+        df = pd.DataFrame(lisdic)
+        idx = df.y.idxmax()
+        self.set_lo_power_voltage(df.ferr.iloc[idx])
+        self.set_opt_volt(channel, df.Vsmin.iloc[idx])
+        return df.Vsmin.iloc[idx], df.ferr.iloc[idx]
+
+    def optimize_pair(self, lofreqs, channels=[0, 1], sis=['1', '2'],
+                      ifchannels=[0, 1],  ferrmax=0.7, ferrmin=-0.4,
+                      ferrstep=-0.2, df_noLO=[], vmin=6.2, vmax=11,
+                      step=0.1, start_Vsense=10.0, gain_Is=200,
+                      makeplot=False):
+        lisdic = []
+        for lofreq in lofreqs:
+            #first set channel 2 to start_Vsense
+            self.set_opt_volt(channels[1], start_Vsense)
+            vb0, ferr0 = self.find_optimal_bias_and_power(channel=channels[0],
+                                                          device=sis[0], ifchannel=ifchannels[0],
+                                                          ferrmax=ferrmax, ferrmin=ferrmin,
+                                                          ferrstep=ferrstep, df_noLO=df_noLO[0],
+                                                          lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                                          step=step, makeplot=makeplot)
+            self.set_opt_volt(channels[0], vb0)
+            # only step over a smaller range of power levels
+            if ferrstep < 0:
+                fmax = ferr0 - ferrstep
+                fmin = ferr0 + ferrstep
+            else:
+                fmax = ferr0 + ferrstep
+                fmin = ferr0 - ferrstep
+            vb1, ferr1 = self.find_optimal_bias_and_power(channel=channels[1],
+                                                          device=sis[1], ifchannel=ifchannels[1],
+                                                          ferrmax=fmax, ferrmin=fmin,
+                                                          ferrstep=ferrstep, df_noLO=df_noLO[1],
+                                                          lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                                          step=step, makeplot=makeplot)
+            self.set_opt_volt(channels[1], vb1)
+            #now check for the best vbias for channel 0
+            vb00, ferr00 = self.find_optimal_bias_and_power(channel=channels[0],
+                                                          device=sis[0], ifchannel=ifchannels[0],
+                                                          ferrmax=ferr1, ferrmin=ferr1+ferrstep,
+                                                          ferrstep=ferrstep, df_noLO=df_noLO[0],
+                                                          lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                                          step=step, makeplot=makeplot)
+            print(vb0, vb00)
+            #input('Proceed >')
+            dic = {}
+            dic['lofreq'] = lofreq
+            dic['vs0'] = vb00
+            dic['Is0'] = Isense(self.t7.adc_read(channels[0], 1, card=self.card), gain=gain_Is,
+                                off=self.offsets[channels[0]])/1e-6
+            dic['vs1'] = vb1
+            dic['Is1'] = Isense(self.t7.adc_read(channels[1], 1, card=self.card), gain=gain_Is,
+                                off=self.offsets[channels[1]])/1e-6            
+            dic['ferr0'] = ferr00
+            dic['ferr1'] = ferr1
+            dic['lopower'] = float(self.pro.get_lo_power())/1e-3
+            lisdic.append(dic)
+            # Now do the PIV curves for both
+            df_hot, df_cold, figIV, axIV = self.PIV_Curves(channel=channels[0],
+                                                           device=sis[0], df_noLO=df_noLO[0],
+                                                           lofreq=lofreq, vmin=-2, vmax=25, step=0.05,
+                                                           makeplot=True, save=True, filename_mod='_hires')
+            self.set_opt_volt(channels[0], vb0)
+            df_hot, df_cold, figIV, axIV = self.PIV_Curves(channel=channels[1],
+                                                           device=sis[1], df_noLO=df_noLO[1],
+                                                           lofreq=lofreq, vmin=-2, vmax=25, step=0.05,
+                                                           makeplot=True, save=True, filename_mod='_highres')
+            self.set_opt_volt(channels[1], vb1)
+            # Now do the IF sweep
+            figLO = self.loPowerTest(lofreq=lofreq, refresh=True, update_current=True,
+                             sis=sis, channels=channels, ifchannels=ifchannels)
+            axLO = self.axLO
+            for j, ax in enumerate(self.axLO):
+                ax.legend(loc='best')
+                ax.grid()
+                title = '%s SIS%s %sGHz YIG' % (self.directory, sis[j], lofreq)
+                ax.set(ylim=(0, 300),
+                       title=title,
+                       ylabel='TR',
+                       xlabel='IF (GHz)'
+                       )
+            filename = os.path.join(self.directory, 'sis_%s_%sGHz_IF_sweep_lopowers.png' % (self.directory, lofreq))
+            figLO.savefig(filename, dpi=150)
+        df = pd.DataFrame(lisdic)
+        fname = os.path.join(self.directory, 'optimized_data_%s.csv' % (datetime.datetime.now().strftime('%Y%m%d_%H%M')))
+        df.to_csv(fname)
+        return df
+            
     def get_and_set_optimal_bias(self, channel=0, device='3', 
                                  ifchannel=0,
                                  df_noLO=None, lofreq=216,
@@ -286,7 +475,9 @@ class SISTestSuite(object):
         TR = (Th - y*Tc)/(y-1) 
         opt_voltage = df_hot.Vsis[TR[TR>0].idxmin()]
         self._print('Optimum Voltage for channel %d ifchannel %d SIS %s is %s V' % (channel, ifchannel, device, opt_voltage))
-        self.t7.set_dac([channel], set_vbias(opt_voltage), card=self.card)
+        self.t7.set_dac([channel], set_vbias(opt_voltage, Rn=40, calibrated=True, 
+                                             card=self.card, channel=channel, offset=off),
+                        card=self.card)
         time.sleep(0.010)
         Vs = Vsense(self.t7.adc_read(channel, 0, card=self.card), gain=gain_Vs, off=self.offsets[channel])/1e-3
         self._print('Voltage read back %s mV' % Vs)
@@ -427,7 +618,8 @@ class SISTestSuite(object):
                            imin=50.0, imax=70.0, vbias=5.0,
                            ferr_min=-1.0, ferr_max=0.7,
                            ferr_step=0.1):
-        vb = set_vbias(vbias)
+        vb = set_vbias(vbias, Rn=40, calibrated=True, 
+                       card=self.card, channel=channel, offset=self.offsets[channel])
         self.t7.set_dac([channel], vb, card=self.card)
         time.sleep(0.050)
         Is = Isense(self.t7.adc_read(channel, 1, card=self.card), gain=gain_Is, off=self.offsets[channel])/1e-6
@@ -671,20 +863,23 @@ class SISTestSuite(object):
             chan_opt_bias = {}
             for chan in range(nchans):
                 for chan2 in range(nchans):
-                    vb = set_vbias(25.0)
+                    vb = set_vbias(25.0)  #modify with calibrated if needed
                     self.t7.set_dac([chan2], vb, card=self.card)
-                    time.sleep(0.050)                
-                opt_bias = self.get_and_set_optimal_bias(channel=channels[chan], device=sis[chan],
-                                                         ifchannel=ifchannels[chan],
-                                                         df_noLO=df_noLO[chan],
-                                                         lofreq=lofreq, vmin=vmin, vmax=vmax,
-                                                         stepvmin=stepvmin, stepvmax=stepvmax,
-                                                         gain_Vs=gain_Vs, gain_Is=gain_Is)
-                chan_opt_bias[channels[chan]] = opt_bias
-
+                    time.sleep(0.050)
+                try:
+                    opt_bias = self.get_and_set_optimal_bias(channel=channels[chan], device=sis[chan],
+                                                             ifchannel=ifchannels[chan],
+                                                             df_noLO=df_noLO[chan],
+                                                             lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                                             stepvmin=stepvmin, stepvmax=stepvmax,
+                                                             gain_Vs=gain_Vs, gain_Is=gain_Is)
+                    chan_opt_bias[channels[chan]] = opt_bias
+                except:
+                    # some error in setting optimal bias
+                    continue
             for chan in range(nchans):
                 vb = chan_opt_bias[channels[chan]]
-                self.t7.set_dac([chan], set_vbias(vb), card=self.card)
+                self.t7.set_dac([chan], set_vbias(vb), card=self.card) #modify with calibrated if needed
                 time.sleep(0.050)
             time.sleep(1.0)
             plt.draw()
@@ -791,7 +986,7 @@ class SISTestSuite(object):
             self._print("Voltage for device %s (channel %d) at %s. Done" % (device, channel, Vs))
             return 
         vb = start_vb
-        self.t7.set_dac([channel], set_vbias(vb), card=self.card)
+        self.t7.set_dac([channel], set_vbias(vb), card=self.card) #modify with calibrated if needed
         time.sleep(0.005)
         Vs = Vsense(self.t7.adc_read(channel, 0, card=self.card),
                     gain=gain_Vs, off=self.offsets[channel])/1e-3
@@ -810,7 +1005,7 @@ class SISTestSuite(object):
                 else:
                     print("No more range available in bias. Already at %s" % vb)
                     return
-            self.t7.set_dac([channel], set_vbias(vb), card=self.card)
+            self.t7.set_dac([channel], set_vbias(vb), card=self.card) #modify with calibrated if needed
             time.sleep(0.005)
             Vs = Vsense(self.t7.adc_read(channel, 0, card=self.card),
                         gain=gain_Vs, off=self.offsets[channel])/1e-3
