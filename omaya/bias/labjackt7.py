@@ -68,6 +68,20 @@ SPI_DIONUM_CONF_OLD = {
     'reset': 'NA',
     }
 
+# the following two arrays derived from data taken on Oct 6, 2022
+Idiode = np.array([ 0.        ,  0.        ,  0.        ,  0.07910156,  0.71191406,
+                    1.66113281,  2.76855469,  3.89575195,  5.0625    ,  6.24902344,
+                    7.43554688,  8.6418457 ,  9.86791992, 11.11376953, 12.37939453,
+                    13.80322266, 15.4050293 , 17.12548828, 18.96459961, 20.92236328,
+                    22.93945312, 25.07519531, 27.25048828, 29.50488281, 31.83837891,
+                    34.19165039])
+Vdiode = np.array([0.00197754, 0.09689941, 0.19379883, 0.29020703, 0.34473828,
+                   0.3809293 , 0.40847266, 0.43208252, 0.45891309, 0.47845508,
+                   0.50195215, 0.52211572, 0.54687842, 0.56139746, 0.58644824,
+                   0.60869629, 0.63371826, 0.65962695, 0.6853999 , 0.70708203,
+                   0.73562891, 0.7590625 , 0.78376172, 0.80405957, 0.82591113,
+                   0.8434292 ])
+
 
 lockfile = os.environ.get('LOCKFILE', '/home/gopal/lock/t7.lock')
 
@@ -75,7 +89,7 @@ class LockException(BaseException):
     pass
 
 class LabJackT7(object):
-    def __init__(self, debug=True, oldBoard=True, api_mode=False):
+    def __init__(self, debug=False, oldBoard=True, api_mode=False):
         self.debug = debug
         self.api_mode = api_mode
         if self.api_mode:
@@ -112,7 +126,7 @@ class LabJackT7(object):
         ljm.eWriteName(self.handle, 'DIO'+ str(self.spi_dionums['reset']), 1)
             
 
-    def _print(self, msg, loglevel=logging.INFO, ):
+    def _print(self, msg, loglevel=logging.DEBUG, ):
         if self.debug:
             print(msg)
         logging.log(level=loglevel, msg=msg)
@@ -257,10 +271,10 @@ class LabJackT7(object):
 
     def _spi_go(self):
         ljm.eWriteName(self.handle, "SPI_GO", 1)  # Do the SPI communications
-        print("SPI GO")
+        self._print("SPI GO")
         
     def _spi_write_array(self, array):
-        print("Writing array %s" % array)
+        self._print("Writing array %s" % array)
         ljm.eWriteNameByteArray(self.handle, "SPI_DATA_TX",
                                 len(array), array)
         self._spi_go()
@@ -414,7 +428,7 @@ class LabJackT7(object):
         self._spi_write_array([first_byte, 0x00, 0x00])
         time.sleep(timeout)
         dataRead = self._spi_read_array(3)
-        print(dataRead)
+        self._print(dataRead)
         ## construct as 16 bit number, ignore last 2 bits
         ## and shift up by 3
         counts = (((dataRead[1] << 8) + dataRead[2]) & 0xffffc) << 3
@@ -490,7 +504,7 @@ class LabJackT7(object):
             fourth_byte = ((voltage_bytes[1] & 0x0f) << 4) & 0xf0
             self.spi_numbytes(4)
             self._spi_write_array([first_byte, second_byte, third_byte, fourth_byte])
-            print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
+            self._print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
         elif type(channel)==list:
             for chan in channel:
                 if chan < 4:
@@ -507,7 +521,7 @@ class LabJackT7(object):
                 fourth_byte = ((voltage_bytes[1] & 0x0f) << 4) & 0xf0
                 self.spi_numbytes(4)
                 self._spi_write_array([first_byte, second_byte, third_byte, fourth_byte])
-                print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
+                self._print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
 
         # first_byte = DAC_UPDATE_ONE_CHANNEL_MODE
         # second_byte = (channel_address << 4) | (0x0f & ((voltage_bytes[0] & 0xF0) >> 4))
@@ -842,7 +856,7 @@ class LabJackT7(object):
         self.card_deselect(card)
 
         
-    def set_lna_drain_voltage(self, channel, voltage=0.0, card=0):
+    def _set_lna_drain_voltage(self, channel, voltage=0.0, card=0):
         """ Sets lna DAC
         """
         #LNA_DAC_WRITE_ONE_CHANNEL = 0X00
@@ -876,3 +890,22 @@ class LabJackT7(object):
                 self._spi_write_array([first_byte, second_byte, third_byte, fourth_byte])
                 self._print("Wrote %s" % (["0x%02x" % byte for byte in [first_byte, second_byte, third_byte, fourth_byte]]))
         #self.card_deselect(card)
+
+    def set_lna_drain_voltage(self, channel, current, voltage, card=0, Igain=199.272):
+        # start assuming a modest current of 5 mA
+        Ids = current
+        Vd_reqd = voltage +  (Ids*1e-3*18) + np.interp(Ids, Idiode, Vdiode)
+        print("First Vd_reqd = %s" % Vd_reqd)
+        self._set_lna_drain_voltage(channel, Vd_reqd, card=card)
+        # now check for actual current and correct
+        time.sleep(0.010)
+        Vds = self.adc_read(channel, 2, card=card)
+        Ids = self.adc_read(channel, 3, card=card)*1e3/Igain
+        print(Vds, Ids)
+        Vd_reqd = voltage +  (Ids*1e-3*18) + np.interp(Ids, Idiode, Vdiode)
+        print(Vd_reqd)
+        self._set_lna_drain_voltage(channel, Vd_reqd, card=card)
+        Vds = self.adc_read(channel, 2, card=card)
+        Ids = self.adc_read(channel, 3, card=card)*1e3/Igain
+        print(Vds, Ids)        
+        #Vdrain = Vds - (Ids*1e-3*22.0) - np.interp(Ids, Idiode, Vdiode)
