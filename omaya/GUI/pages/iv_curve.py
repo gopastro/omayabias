@@ -150,9 +150,9 @@ def update_directory(children):
 def run_test(button_click, directory, new_board, card, device, channel, vmin, vmax, step_count):
     if(button_click>0):
         if (directory is not None) and (new_board is not None) and (card is not None) and (device is not None and device != "") and (channel is not None) and (step_count is not None):
-            sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card)
+            sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card, use_microlambda=False)
             df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False, calibrated=True)
-            sistest.close()
+            sistest.close_all()
             #df= util.testing.makeMixedDataFrame() # Only for testing!
             return df.to_json(date_format="iso", orient="split")
         else:
