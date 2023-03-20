@@ -69,6 +69,7 @@ class SISTestSuite(object):
             self.pro.close()
         if self.use_microlambda:            
             self.ml.close()
+        self._print("Connection Closed.")
 
     def _print(self, msg, loglevel=logging.INFO, ):
         if self.debug:
@@ -139,8 +140,8 @@ class SISTestSuite(object):
         return df
 
     def sweep_IF_both(self, vmin=-2, vmax=16, step=0.1,
-                      timeout=0.010, gain_Vs=80, gain_Is=200,
-                      channel=0, if_freq=None, off=None,):
+                      timeout=0.010, gain_Vs=80, gain_Is=200, Rn=39,
+                      channel=0, if_freq=None, off=None, calibrated=True):
         if if_freq is None:
             if_freq = self.if_freq
         self._print('Setting IF frequency to %s GHz' % if_freq)
@@ -154,7 +155,7 @@ class SISTestSuite(object):
         for Vsis in vlist:
             dic = {}
             dic['Vsis'] = Vsis
-            voltage_bytes =  set_vbias(Vsis, Rn=40, calibrated=True, 
+            voltage_bytes =  set_vbias(Vsis, Rn=Rn, calibrated=calibrated, 
                                        card=self.card, channel=channel, offset=off)
             self.t7.set_dac([channel], voltage_bytes, card=self.card)
             time.sleep(timeout)
@@ -171,7 +172,7 @@ class SISTestSuite(object):
                 power = self.pro.get_linear_power(IF=ifchannel)
                 dic['IFPower_%d' % ifchannel] = power
             lisdic.append(dic)
-        vbytes = set_vbias(old_bias, Rn=40, calibrated=True, 
+        vbytes = set_vbias(old_bias, Rn=Rn, calibrated=calibrated,
                            card=self.card, channel=channel, offset=off)
         self.t7.set_dac([channel], vbytes, card=self.card)
         off = self.t7.adc_read(channel, 6, card=self.card) * 2.0
@@ -180,6 +181,7 @@ class SISTestSuite(object):
 
     def sweep_IF(self, vmin=-2, vmax=16, step=0.1,
                  timeout=0.010, gain_Vs=80, gain_Is=200,
+                 Rn=39, calibrated=True,
                  channel=0, ifchannel=0, off=None,):
         self._print('Setting IF frequency to %s GHz' % self.if_freq)
         self.pro.set_83650_freq(self.if_freq*1e9)
@@ -191,7 +193,7 @@ class SISTestSuite(object):
         for Vsis in vlist:
             dic = {}
             dic['Vsis'] = Vsis
-            voltage_bytes =  set_vbias(Vsis, Rn=40, calibrated=True, 
+            voltage_bytes =  set_vbias(Vsis, Rn=Rn, calibrated=calibrated,
                                        card=self.card, channel=channel, offset=off)
             self.t7.set_dac([channel], voltage_bytes, card=self.card)
             time.sleep(timeout)
@@ -207,7 +209,7 @@ class SISTestSuite(object):
             power = self.pro.get_linear_power(IF=ifchannel)
             dic['IFPower'] = power
             lisdic.append(dic)
-        vbytes = set_vbias(old_bias, Rn=40, calibrated=True, 
+        vbytes = set_vbias(old_bias, Rn=Rn, calibrated=calibrated, 
                            card=self.card, channel=channel, offset=off)
         self.t7.set_dac([channel], vbytes, card=self.card)
         off = self.t7.adc_read(channel, 6, card=self.card) * 2.0
@@ -224,7 +226,7 @@ class SISTestSuite(object):
     
     def set_opt_volt(self, channel, opt_volt, gain_Vs=80, 
                      vstep=0.05, threshold=0.1, vmin=6,
-                     vmax=12):
+                     vmax=12, Rn=39., calibrated=True):
         off = self.t7.adc_read(channel, 6, card=self.card) * 2.0 
         if opt_volt > 0.0:
             vb = 8.0
@@ -235,7 +237,7 @@ class SISTestSuite(object):
             vmin = -12
             vmax = -6
 
-        self.t7.set_dac([channel], set_vbias(vb, Rn=40.0, card=self.card, calibrated=True,
+        self.t7.set_dac([channel], set_vbias(vb, Rn=Rn, card=self.card, calibrated=calibrated,
                                              channel=channel),
                         card=self.card)
         time.sleep(0.010)
@@ -254,7 +256,7 @@ class SISTestSuite(object):
                 if vb >= vmax:
                     print("Reached max vmax")
                     return
-            self.t7.set_dac([channel], set_vbias(vb, Rn=40.0, card=self.card, calibrated=True,
+            self.t7.set_dac([channel], set_vbias(vb, Rn=Rn, card=self.card, calibrated=calibrated,
                                                  channel=channel),
                             card=self.card)
             time.sleep(0.010)
@@ -272,6 +274,7 @@ class SISTestSuite(object):
                    vmin=-2, vmax=16, step=0.1,
                    gain_Vs=80, gain_Is=200, 
                    makeplot=True, save=True,
+                   Rn=39., calibrated=True,
                    filename_mod=''):
         if makeplot:
             figIV, axIV = plt.subplots(1,1,figsize=(8,6))
@@ -282,12 +285,14 @@ class SISTestSuite(object):
         time.sleep(.5)
         df1_hot = self.sweep_IF(vmin=vmin, vmax=vmax, step=step,
                                 gain_Vs=gain_Vs, gain_Is=gain_Is,
+                                Rn=Rn, calibrated=calibrated,
                                 channel=channel, ifchannel=ifchannel) 
         self.t7.select_Load('cold')
         time.sleep(.5)
         self._print("Moving to Cold Load")
         df1_cold = self.sweep_IF(vmin=vmin, vmax=vmax, step=step,
                                  gain_Vs=gain_Vs, gain_Is=gain_Is,
+                                 Rn=Rn, calibrated=calibrated,                                 
                                  channel=channel, ifchannel=ifchannel) 
 
         power = float(self.pro.get_lo_power())/1e-3
@@ -337,6 +342,7 @@ class SISTestSuite(object):
                                     ifchannel=0, df_noLO=None, lofreq=216,
                                     vmin=6.2, vmax=11, step=0.1,
                                     ferrmin=-0.5, ferrmax=0.8, ferrstep=-0.2,
+                                    Rn=39., calibrated=True,
                                     makeplot=False):
         lisdic = []
         ferr_values = numpy.arange(ferrmax, ferrmin, ferrstep)
@@ -347,6 +353,7 @@ class SISTestSuite(object):
             df_hot, df_cold = self.PIV_Curves(channel=channel, device=device,
                                               ifchannel=ifchannel, df_noLO=df_noLO,
                                               lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                              Rn=Rn, calibrated=calibrated,
                                               step=step, makeplot=makeplot)
             ph = df_hot.IFPower
             pc = df_cold.IFPower
@@ -372,6 +379,7 @@ class SISTestSuite(object):
                       ifchannels=[0, 1],  ferrmax=0.7, ferrmin=-0.4,
                       ferrstep=-0.2, df_noLO=[], vmin=6.2, vmax=11,
                       step=0.1, start_Vsense=10.0, gain_Is=200,
+                      Rn=39., calibrated=True,
                       makeplot=False):
         lisdic = []
         for lofreq in lofreqs:
@@ -382,6 +390,7 @@ class SISTestSuite(object):
                                                           ferrmax=ferrmax, ferrmin=ferrmin,
                                                           ferrstep=ferrstep, df_noLO=df_noLO[0],
                                                           lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                                          Rn=Rn, calibrated=calibrated,
                                                           step=step, makeplot=makeplot)
             self.set_opt_volt(channels[0], vb0)
             # only step over a smaller range of power levels
@@ -396,6 +405,7 @@ class SISTestSuite(object):
                                                           ferrmax=fmax, ferrmin=fmin,
                                                           ferrstep=ferrstep, df_noLO=df_noLO[1],
                                                           lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                                          Rn=Rn, calibrated=calibrated,
                                                           step=step, makeplot=makeplot)
             self.set_opt_volt(channels[1], vb1)
             #now check for the best vbias for channel 0
@@ -404,6 +414,7 @@ class SISTestSuite(object):
                                                           ferrmax=ferr1, ferrmin=ferr1+ferrstep,
                                                           ferrstep=ferrstep, df_noLO=df_noLO[0],
                                                           lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                                          Rn=Rn, calibrated=calibrated,
                                                           step=step, makeplot=makeplot)
             print(vb0, vb00)
             #input('Proceed >')
@@ -419,6 +430,9 @@ class SISTestSuite(object):
             dic['ferr1'] = ferr1
             dic['lopower'] = float(self.pro.get_lo_power())/1e-3
             lisdic.append(dic)
+            dff = pd.DataFrame({k: [v] for k, v in dic.items()})
+            ffname = os.path.join(self.directory, 'optimized_data_%sGHz_%s.csv' % (lofreq, datetime.datetime.now().strftime('%Y%m%d_%H%M')))
+            dff.to_csv(ffname)
             # Now do the PIV curves for both
             df_hot, df_cold, figIV, axIV = self.PIV_Curves(channel=channels[0],
                                                            device=sis[0], df_noLO=df_noLO[0],
@@ -455,14 +469,19 @@ class SISTestSuite(object):
                                  df_noLO=None, lofreq=216,
                                  vmin=-2, vmax=16, step=0.1,
                                  gain_Vs=80, gain_Is=200,
-                                 makeplot=True, save=True, stepvmin=9, stepvmax=12):
+                                 Rn=39., calibrated=True,
+                                 makeplot=True, save=True, stepvmin=9, stepvmax=12,
+                                 off=None):
         
         df_hot, df_cold, figIV, axIV = self.PIV_Curves(channel=channel, device=device,
                                                        ifchannel=ifchannel,
                                                        df_noLO=df_noLO, lofreq=lofreq,
                                                        vmin=vmin, vmax=vmax, step=step,
                                                        gain_Vs=gain_Vs, gain_Is=gain_Is,
+                                                       Rn=Rn, calibrated=calibrated,
                                                        makeplot=makeplot, save=save)
+        if off is None:
+            off = self.offsets[channel]
         #phot = df_hot[(df_hot.Vs>7.8)&(df_hot.Vs<12)].IFPower
         #pcold = df_cold[(df_cold.Vs>7.8)&(df_cold.Vs<12)].IFPower
         #if device=='4':
@@ -475,7 +494,7 @@ class SISTestSuite(object):
         TR = (Th - y*Tc)/(y-1) 
         opt_voltage = df_hot.Vsis[TR[TR>0].idxmin()]
         self._print('Optimum Voltage for channel %d ifchannel %d SIS %s is %s V' % (channel, ifchannel, device, opt_voltage))
-        self.t7.set_dac([channel], set_vbias(opt_voltage, Rn=40, calibrated=True, 
+        self.t7.set_dac([channel], set_vbias(opt_voltage, Rn=Rn, calibrated=calibrated,
                                              card=self.card, channel=channel, offset=off),
                         card=self.card)
         time.sleep(0.010)
