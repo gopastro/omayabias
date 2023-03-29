@@ -8,12 +8,14 @@ import plotly.express as px
 #from pandas import util # only for testing!
 import pandas as pd
 import json
+import threading
+import time
 
 # IV Curve Page
 layout = html.Div([
     html.Div(id="initialization-dummy-div"),
     dcc.Store(id="iv-dataset"),
-    #dcc.Store(id="log-dataset"),
+    dcc.Store(id="log-dataset"),
     dbc.Row([
         dbc.Col([
             dbc.Row([
@@ -123,7 +125,7 @@ layout = html.Div([
         ]),
         dbc.Col([
             html.H4("Live Logger:", style={"padding-top": "110px"}),
-            html.Div("! I will work on this soon, please open up terminal for current logging !", id="log", style={"height": "575px", "overflow": "auto", "display": "flex", "flex-direction": "column-reverse", "border": "dashed"})
+            html.Div(id="log", style={"height": "575px", "overflow": "auto", "display": "flex", "flex-direction": "column-reverse", "border": "dashed"})
         ])
     ]),
     html.Hr(),
@@ -138,6 +140,7 @@ def update_directory(children):
     return "DATA/"+(datetime.now().strftime("%b%d_%Y").lower())
 
 @callback(Output("iv-dataset", "data"),
+            Output("logs", "children"),
             Input("submit-button", "n_clicks"),
             State("directory-input", "value"),
             State("new-board-input", "value"),
@@ -148,15 +151,36 @@ def update_directory(children):
             State("vmax-input", "value"),
             State("step-input", "value"))
 def run_test(button_click, directory, new_board, card, device, channel, vmin, vmax, step_count):
+    def do_test():
+        sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card, use_microlambda=False)
+        df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False, calibrated=True)
+        sistest.close_all()
+        #df= util.testing.makeMixedDataFrame() # Only for testing!
+        return df.to_json(date_format="iso", orient="split")
+    logs = []
+    time = datetime.now()
+    
+    def update_logs():
+        while True:
+            for ol in OmayaLog.select().where(OmayaLog.date>=time).order_by(OmayaLog.date):
+                logs.append(ol.date)
+                logs.append(ol.logtext)
+                if ol.logtext == "Connection Closed.":
+                    break
+                time.sleep(0.5)
+        return logs
+
+    t1 = threading.Thread(target=do_test)
+    t2 = threading.Thread(target=update_logs)
+
     if(button_click>0):
         if (directory is not None) and (new_board is not None) and (card is not None) and (device is not None and device != "") and (channel is not None) and (step_count is not None):
-            sistest = SISTestSuite(directory, oldBoard=False if new_board==1 else True, card=card, use_microlambda=False)
-            df = sistest.dc_iv_sweep(device=device, channel=channel, vmin=vmin, vmax=vmax, step=step_count, makeplot=False, calibrated=True)
-            sistest.close_all()
-            #df= util.testing.makeMixedDataFrame() # Only for testing!
-            return df.to_json(date_format="iso", orient="split")
+            time = datetime.now()
+            dataframe = t1.start()
+            logs = t2.start()
+            return dataframe, logs
         else:
-            return -1
+            return -1, logs
 
 @callback(Output("output-state", "children"),
             Input("iv-dataset", "data"),
@@ -213,11 +237,3 @@ def update_vminmax(temperature):
         return True, True, -5, 5
     else:
         return True, True, -1, 1
-
-# @callback(Output("log", "children"),
-#             Input("log-dataset", "data"), prevent_initial_call=True)
-# def update_logs(dataset):
-#     if dataset is not None:
-#         return dash_table.DataTable(dataset)
-#     else:
-#         return ""

@@ -13,7 +13,6 @@ layout = html.Div([
 ], className="p-5")
 
 @callback(Output("log", "children"),
-            State("log", "children"),
             Input("button", "n_clicks"))
 def updater(arr, n_clicks):
     if arr is None:
