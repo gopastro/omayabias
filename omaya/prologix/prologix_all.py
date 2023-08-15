@@ -15,9 +15,10 @@ class Prologix:
     #def __init__(self, host='172.30.51.89', port=1234,
     def __init__(self, host='172.24.44.80', port=1234,                 
                  pmeter_address=[13, 15], lake_address=12,
-                 synth_address=19, lopmeter_address=14,
+                 synth_address=12, lopmeter_address=14,
                  e3631a_address=5,
-                 hp83650_address=18,
+                 hp8673b_address=17,
+                 hp83650_address=19,
                  hp3478a_address=23,
                  #second_pmeter_address=13,
                  asksleep=0.01,):
@@ -33,6 +34,7 @@ class Prologix:
         self.e3631a_address = e3631a_address
         self.hp83650_address = hp83650_address
         self.hp3478a_address = hp3478a_address
+        self.hp8673b_address = hp8673b_address
         # self.second_pmeter_address = second_pmeter_address
         #self.set_gpib_address()
         self.temperature = {}
@@ -175,6 +177,15 @@ class Prologix:
         else:
             fstr = "%s GHz" % (freq/1.e9)
         self.write('FREQ:CW %s' % fstr)
+
+    def set_8673b_freq(self, freq):
+        """Set CW frequency in Hz"""
+        self.set_gpib_address(self.hp8673b_address)
+        if freq<1e9:
+            fstr = "%sMz" % (freq/1.e6)
+        else:
+            fstr = "%sGz" % (freq/1.e9)
+        self.write('FR%s' % fstr)
         
     def e3631a_output_on(self):
         self.set_gpib_address(self.e3631a_address)

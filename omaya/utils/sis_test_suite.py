@@ -216,6 +216,80 @@ class SISTestSuite(object):
         self._print("Setting and reading channel %d to voltage: %.3f" % (channel, Vsense(self.t7.adc_read(channel, 0, card=self.card), gain=gain_Vs, off=off)/1e-3))
         return pd.DataFrame(lisdic)
 
+    def sweep_IF_pair(self, vmin=-2, vmax=16, step=0.1,
+                      timeout=0.010, gain_Vs=80, gain_Is=200,
+                      Rn=39, calibrated=True,
+                      channels=[0, 1], ifchannels=[0, 1], offs=[None, None]):
+        self._print('Setting IF frequency to %s GHz' % self.if_freq)
+        self.pro.set_83650_freq(self.if_freq*1e9)
+        if offs is None:
+            offs = [self.offsets[channels[0]], self.offsets[channels[1]]]
+        
+        old_bias0 = Vsense(self.t7.adc_read(channels[0], 0, card=self.card), gain=gain_Vs, off=offs[0])/1e-3
+        old_bias1 = Vsense(self.t7.adc_read(channels[1], 0, card=self.card), gain=gain_Vs, off=offs[1])/1e-3
+        vlist = numpy.arange(vmin, vmax+step, step)
+        lisdic0 = []
+        lisdic1 = []
+        for Vsis in vlist:
+            dic0 = {}
+            dic1 = {}
+            dic0['Vsis'] = Vsis
+            dic1['Vsis'] = Vsis
+            # ch 0
+            voltage_bytes =  set_vbias(Vsis, Rn=Rn, calibrated=calibrated,
+                                       card=self.card, channel=channels[0], offset=offs[0])
+            self.t7.set_dac([channels[0]], voltage_bytes, card=self.card)
+            time.sleep(timeout)
+            # ch 1
+            voltage_bytes =  set_vbias(Vsis, Rn=Rn, calibrated=calibrated,
+                                       card=self.card, channel=channels[1], offset=offs[1])            
+            self.t7.set_dac([channels[1]], voltage_bytes, card=self.card)            
+            time.sleep(timeout)
+            #ch 0 
+            off = self.t7.adc_read(channels[0], 6, card=self.card) * 2.0
+            Vs = Vsense(self.t7.adc_read(channels[0], 0, card=self.card), gain=gain_Vs, off=off)/1e-3
+            Is = Isense(self.t7.adc_read(channels[0], 1, card=self.card), gain=gain_Is, off=off)/1e-6
+            dic0['Vs'] = Vs
+            dic0['Is'] = Is
+
+            #ch 1
+            off = self.t7.adc_read(channels[1], 6, card=self.card) * 2.0
+            Vs = Vsense(self.t7.adc_read(channels[1], 0, card=self.card), gain=gain_Vs, off=off)/1e-3
+            Is = Isense(self.t7.adc_read(channels[1], 1, card=self.card), gain=gain_Is, off=off)/1e-6
+            dic1['Vs'] = Vs
+            dic1['Is'] = Is
+            
+            tempdic = self.pro.read_temperature()
+            time.sleep(0.025)
+            for i in (1, 2, 3, 5, 6, 7):
+                dic0['T%d' % i ] = tempdic[i]
+                dic1['T%d' % i ] = tempdic[i]
+
+            # ch0
+            power = self.pro.get_linear_power(IF=ifchannels[0])
+            dic0['IFPower'] = power
+            # ch1
+            power = self.pro.get_linear_power(IF=ifchannels[1])
+            dic1['IFPower'] = power            
+            lisdic0.append(dic0)
+            lisdic1.append(dic1)
+
+        # ch 0
+        vbytes = set_vbias(old_bias0, Rn=Rn, calibrated=calibrated, 
+                           card=self.card, channel=channels[0], offset=offs[0])
+        self.t7.set_dac([channels[0]], vbytes, card=self.card)
+        off = self.t7.adc_read(channels[0], 6, card=self.card) * 2.0
+        self._print("Setting and reading channel %d to voltage: %.3f" % (channels[0], Vsense(self.t7.adc_read(channels[0], 0, card=self.card), gain=gain_Vs, off=off)/1e-3))
+
+        # ch 1
+        vbytes = set_vbias(old_bias1, Rn=Rn, calibrated=calibrated, 
+                           card=self.card, channel=channels[1], offset=offs[1])
+        self.t7.set_dac([channels[1]], vbytes, card=self.card)
+        off = self.t7.adc_read(channels[1], 6, card=self.card) * 2.0
+        self._print("Setting and reading channel %d to voltage: %.3f" % (channels[1], Vsense(self.t7.adc_read(channels[1], 0, card=self.card), gain=gain_Vs, off=off)/1e-3))
+        
+        return pd.DataFrame(lisdic0), pd.DataFrame(lisdic1)
+    
     def _check_level(self, current_power, opt_power, threshold=0.002):
         if abs(current_power - opt_power) <= threshold:
             return 0
@@ -338,6 +412,97 @@ class SISTestSuite(object):
         else:
             return df1_hot, df1_cold
 
+    def PIV_Curves_Pair(self, channels=[0, 1], devices=['1', '2'],
+                        ifchannels=[0, 1],
+                        df_noLOs=[None, None], lofreq=216,
+                        vmin=-2, vmax=16, step=0.1,
+                        gain_Vs=80, gain_Is=200, 
+                        makeplot=True, save=True,
+                        Rn=39., calibrated=True,
+                        filename_mod=''):
+        if makeplot:
+            figIV, axIV = plt.subplots(1, 1, figsize=(8,6))
+            axIV.plot(df_noLOs[0].Vs, df_noLOs[0].Is, 's-', label='SIS%s noLO' % devices[0])
+            axIV.plot(df_noLOs[1].Vs, df_noLOs[1].Is, 's-', label='SIS%s noLO' % devices[1])
+            
+        self._print("Moving to Hot Load")
+        self.t7.select_Load('hot')
+        time.sleep(.5)
+        df0_hot, df1_hot = self.sweep_IF_pair(vmin=vmin, vmax=vmax, step=step,
+                                              gain_Vs=gain_Vs, gain_Is=gain_Is,
+                                              Rn=Rn, calibrated=calibrated,
+                                              channels=channels, ifchannels=ifchannels) 
+        self.t7.select_Load('cold')
+        time.sleep(.5)
+        self._print("Moving to Cold Load")
+        df0_cold, df1_cold = self.sweep_IF_pair(vmin=vmin, vmax=vmax, step=step,
+                                                gain_Vs=gain_Vs, gain_Is=gain_Is,
+                                                Rn=Rn, calibrated=calibrated,                                 
+                                                channels=channels, ifchannels=ifchannels) 
+
+        power = float(self.pro.get_lo_power())/1e-3
+        # power = raw_input('What is the max power in mW?')
+        if makeplot:
+            # ch 0
+            axIV.plot(df0_hot.Vs, df0_hot.Is, 'o-',
+                      label='SIS{:s} {:.0f}GHz {:.0f}mW'.format(devices[0], lofreq, power))
+            axIV.plot(df0_hot.Vs, df0_hot.IFPower/1e-8, 's-',
+                      label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Hot'.format(devices[0], self.if_freq, lofreq, power))
+            axIV.plot(df0_cold.Vs, df0_cold.IFPower/1e-8, 's-',
+                      label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Cold'.format(devices[0], self.if_freq, lofreq, power))
+
+            # ch 1
+            axIV.plot(df1_hot.Vs, df1_hot.Is, 'o-',
+                      label='SIS{:s} {:.0f}GHz {:.0f}mW'.format(devices[1], lofreq, power))
+            axIV.plot(df1_hot.Vs, df1_hot.IFPower/1e-8, 's-',
+                      label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Hot'.format(devices[1], self.if_freq, lofreq, power))
+            axIV.plot(df1_cold.Vs, df1_cold.IFPower/1e-8, 's-',
+                      label='SIS{:s} IF{:.0f} {:.0f}GHz {:.0f}mW Cold'.format(devices[1], self.if_freq, lofreq, power))
+
+            #axIV.set_xlim(0, 25)
+            axIV.set_xlabel('mV')
+            #if df1_hot.Is.max()>500:
+            #    axIV.set_ylim(-10,1000)
+            #else:
+            #    axIV.set_ylim(-10, 500)
+            axIV.set_ylim(-10, 400)
+            axIV.set_ylabel('uA')
+            axIV.legend()
+            axIV.grid()
+            axIV.set_title('{:s} SIS{:s} {:.0f}GHz'.format(self.directory, '_'.join(devices), lofreq))
+            #figIV.show()
+            plt.draw()
+            plt.show()
+            plt.pause(0.001)
+            
+            if save:
+                figname = os.path.join(self.directory, '{:s}_sis{:s}_{:.0f}GHz_ivcurves.png'.format(self.directory, '_'.join(devices), lofreq))
+                figIV.savefig(figname, dpi=150)
+                self._print("Saving figure for PIV Curve to %s" % figname)
+
+        #ch 0
+        fname_hot = os.path.join(self.directory,
+                                 'sis{:s}_{:s}_{:.0f}GHz_{:.0f}mW_IF6_hot{:s}.txt'.format(devices[0], self.directory, lofreq, power, filename_mod))
+        fname_cold = os.path.join(self.directory,
+                                  'sis{:s}_{:s}_{:.0f}GHz_{:.0f}mW_IF6_cold{:s}.txt'.format(devices[0], self.directory, lofreq, power, filename_mod))
+        df0_hot.to_csv(fname_hot)
+        df0_cold.to_csv(fname_cold)
+        self._print("Saving hot and cold PIV csv files to %s and %s" % (fname_hot, fname_cold))
+
+        #ch 1
+        fname_hot = os.path.join(self.directory,
+                                 'sis{:s}_{:s}_{:.0f}GHz_{:.0f}mW_IF6_hot{:s}.txt'.format(devices[1], self.directory, lofreq, power, filename_mod))
+        fname_cold = os.path.join(self.directory,
+                                  'sis{:s}_{:s}_{:.0f}GHz_{:.0f}mW_IF6_cold{:s}.txt'.format(devices[1], self.directory, lofreq, power, filename_mod))
+        df1_hot.to_csv(fname_hot)
+        df1_cold.to_csv(fname_cold)
+        self._print("Saving hot and cold PIV csv files to %s and %s" % (fname_hot, fname_cold))
+        
+        if makeplot:
+            return [df0_hot, df1_hot], [df0_cold, df1_cold], figIV, axIV
+        else:
+            return [df0_hot, df1_hot], [df0_cold, df1_cold]
+        
     def find_optimal_bias_and_power(self, channel=0, device='3',
                                     ifchannel=0, df_noLO=None, lofreq=216,
                                     vmin=6.2, vmax=11, step=0.1,
@@ -375,6 +540,70 @@ class SISTestSuite(object):
         self.set_opt_volt(channel, df.Vsmin.iloc[idx])
         return df.Vsmin.iloc[idx], df.ferr.iloc[idx]
 
+    def find_paired_optimal_bias_and_power(self, channels=[0, 1], devices=['1', '2'],
+                                           ifchannels=[0, 1], df_noLOs=[None, None], lofreq=216,
+                                           vmin=6.2, vmax=11, step=0.1,
+                                           ferrmin=-0.5, ferrmax=0.8, ferrstep=-0.2,
+                                           Rn=39., calibrated=True,
+                                           makeplot=False):
+        """
+        Sweep a pair of SIS junctions together for optimal
+        bias voltage and LO power
+        """
+        lisdic = []
+        ferr_values = numpy.arange(ferrmax, ferrmin, ferrstep)
+        self.set_lo_frequency(lofreq)
+        for ferr_value in ferr_values:
+            self.set_lo_power_voltage(ferr_value)
+            time.sleep(0.5)
+            df_hots, df_colds = self.PIV_Curves_Pair(channels=channels, devices=devices,
+                                              ifchannels=ifchannels, df_noLOs=df_noLOs,
+                                              lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                              Rn=Rn, calibrated=calibrated,
+                                              step=step, makeplot=makeplot)
+            # ch 0
+            ph = df_hots[0].IFPower
+            pc = df_colds[0].IFPower
+            th = df_hots[0].T3.mean()
+            tc = df_colds[0].T7.mean()
+            y = ph/pc
+            TR = (th - y*tc)/(y-1)
+            print(TR)
+            dic = {}
+            dic['Vsmin0'] = df_hots[0].Vs[y.idxmax()]
+            dic['Ismin0'] = df_hots[0].Is[y.idxmax()]
+            dic['ferr'] = ferr_value
+            dic['TR0'] = TR[y.idxmax()]
+            dic['y0'] = y.max()
+
+            # ch 1
+            ph = df_hots[1].IFPower
+            pc = df_colds[1].IFPower
+            th = df_hots[1].T3.mean()
+            tc = df_colds[1].T7.mean()
+            y = ph/pc
+            TR = (th - y*tc)/(y-1)
+            print(TR)
+            dic['Vsmin1'] = df_hots[1].Vs[y.idxmax()]
+            dic['Ismin1'] = df_hots[1].Is[y.idxmax()]
+            dic['ferr'] = ferr_value
+            dic['TR1'] = TR[y.idxmax()]
+            dic['y1'] = y.max()
+            
+            lisdic.append(dic)
+        df = pd.DataFrame(lisdic)
+        #print(df.columns)
+        #print(df.shape)
+        # ch 0
+        idx = df.y0.idxmax()
+        self.set_lo_power_voltage(df.ferr.iloc[idx])
+        self.set_opt_volt(channels[0], df.Vsmin0.iloc[idx])
+        # ch 1
+        idx = df.y1.idxmax()
+        self.set_lo_power_voltage(df.ferr.iloc[idx])
+        self.set_opt_volt(channels[1], df.Vsmin1.iloc[idx])        
+        return [df.Vsmin0.iloc[idx], df.Vsmin1.iloc[idx]], df.ferr.iloc[idx]
+    
     def optimize_pair(self, lofreqs, channels=[0, 1], sis=['1', '2'],
                       ifchannels=[0, 1],  ferrmax=0.7, ferrmin=-0.4,
                       ferrstep=-0.2, df_noLO=[], vmin=6.2, vmax=11,
@@ -463,7 +692,66 @@ class SISTestSuite(object):
         fname = os.path.join(self.directory, 'optimized_data_%s.csv' % (datetime.datetime.now().strftime('%Y%m%d_%H%M')))
         df.to_csv(fname)
         return df
-            
+
+    def optimize_pair_together(self, lofreqs, channels=[0, 1], sis=['1', '2'],
+                               ifchannels=[0, 1],  ferrmax=0.7, ferrmin=-0.4,
+                               ferrstep=-0.2, df_noLOs=[], vmin=6.2, vmax=11,
+                               step=0.1, start_Vsense=10.0, gain_Is=200,
+                               Rn=39., calibrated=True,
+                               makeplot=False):
+        lisdic = []
+        for lofreq in lofreqs:
+            [vb0, vb1], ferr0 = self.find_paired_optimal_bias_and_power(channels=channels,
+                                                                 devices=sis, ifchannels=ifchannels,
+                                                                 ferrmax=ferrmax, ferrmin=ferrmin,
+                                                                 ferrstep=ferrstep, df_noLOs=df_noLOs,
+                                                                 lofreq=lofreq, vmin=vmin, vmax=vmax,
+                                                                 Rn=Rn, calibrated=calibrated,
+                                                                 step=step, makeplot=makeplot)
+            self.set_opt_volt(channels[0], vb0)
+            self.set_opt_volt(channels[1], vb1)
+            dic = {}
+            dic['lofreq'] = lofreq
+            dic['vs0'] = vb0
+            dic['Is0'] = Isense(self.t7.adc_read(channels[0], 1, card=self.card), gain=gain_Is,
+                                off=self.offsets[channels[0]])/1e-6
+            dic['vs1'] = vb1
+            dic['Is1'] = Isense(self.t7.adc_read(channels[1], 1, card=self.card), gain=gain_Is,
+                                off=self.offsets[channels[1]])/1e-6            
+            dic['ferr0'] = ferr0
+            dic['ferr1'] = ferr0
+            dic['lopower'] = float(self.pro.get_lo_power())/1e-3
+            lisdic.append(dic)
+            dff = pd.DataFrame({k: [v] for k, v in dic.items()})
+            ffname = os.path.join(self.directory, 'optimized_data_%sGHz_%s.csv' % (lofreq, datetime.datetime.now().strftime('%Y%m%d_%H%M')))
+            dff.to_csv(ffname)
+            # Now do the PIV curves for both
+            df_hots, df_colds, figIV, axIV = self.PIV_Curves_Pair(channels=channels,
+                                                           devices=sis, df_noLOs=df_noLOs,
+                                                           lofreq=lofreq, vmin=-2, vmax=25, step=0.05,
+                                                           makeplot=True, save=True, filename_mod='_hires')
+            self.set_opt_volt(channels[0], vb0)
+            self.set_opt_volt(channels[1], vb1)
+            # Now do the IF sweep
+            figLO = self.loPowerTest(lofreq=lofreq, refresh=True, update_current=True,
+                             sis=sis, channels=channels, ifchannels=ifchannels)
+            axLO = self.axLO
+            for j, ax in enumerate(self.axLO):
+                ax.legend(loc='best')
+                ax.grid()
+                title = '%s SIS%s %sGHz YIG' % (self.directory, sis[j], lofreq)
+                ax.set(ylim=(0, 300),
+                       title=title,
+                       ylabel='TR',
+                       xlabel='IF (GHz)'
+                       )
+            filename = os.path.join(self.directory, 'sis_%s_%sGHz_IF_sweep_lopowers.png' % (self.directory, lofreq))
+            figLO.savefig(filename, dpi=150)
+        df = pd.DataFrame(lisdic)
+        fname = os.path.join(self.directory, 'optimized_data_%s.csv' % (datetime.datetime.now().strftime('%Y%m%d_%H%M')))
+        df.to_csv(fname)
+        return df
+    
     def get_and_set_optimal_bias(self, channel=0, device='3', 
                                  ifchannel=0,
                                  df_noLO=None, lofreq=216,

@@ -11,6 +11,9 @@ from omaya.omayadb.dblog import logOmaya, calOmaya, get_sis_slope_offset
 #In real mixer block
 # Isense resis is 10 ohms
 # parallel resistance is 200 ohms
+# single sis dummy load:
+# Isense resis is 5 ohms
+# parallel resistance is 50 ohms
 RIsense_real = 10 #5 #5 #20 #5 #5  # 20
 Rsafety_real = 200 #50 #91 #50  # 100
 Rdiv_real = 5e3 #10e3 #5e3
