@@ -23,6 +23,14 @@ https://labjack.com/support/software/examples/ljm/python
 Unzip the zip file, and from within the virtual environment do:
 
 	python setup.py install
+
+## Install Python bindings for U3 (used in LO system)
+
+Find the python installer at: 
+https://labjack.com/support/software/examples/ud/labjackpython
+Unzip the zip file, and from within the virtual environment do:
+
+	python setup.py install
 	
 ## Development
 
